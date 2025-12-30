@@ -104,22 +104,39 @@ jobs:
 
     - name: Update buildozer.spec if needed
       run: |
-        # 如果 buildozer.spec 文件存在，检查并更新 android.sdk 配置
-        if [ -f "${{ env.BUILD_DIR }}/buildozer.spec" ]; then
+        cd ${{ env.BUILD_DIR }}
+        
+        if [ -f "buildozer.spec" ]; then
+          echo "处理 buildozer.spec 文件..."
+          
           # 备份原始文件
-          cp "${{ env.BUILD_DIR }}/buildozer.spec" "${{ env.BUILD_DIR }}/buildozer.spec.backup"
+          cp buildozer.spec buildozer.spec.backup
           
-          # 替换 android.sdk = 为 android.api =
-          sed -i 's/android\.sdk\s*=/android.api =/g' "${{ env.BUILD_DIR }}/buildozer.spec"
+          # 1. 首先删除所有 android.sdk 和 android.api 行
+          sed -i '/^android\.sdk\s*=/d' buildozer.spec
+          sed -i '/^android\.api\s*=/d' buildozer.spec
           
-          # 将值更新为 33
-          sed -i 's/android\.api\s*=\s*[0-9]*/android.api = 33/g' "${{ env.BUILD_DIR }}/buildozer.spec"
+          # 2. 在 [app] 部分后添加 android.api
+          # 使用 awk 确保只在 [app] 部分后添加一次
+          awk '
+            /^\[app\]$/ { 
+              print $0
+              print "android.api = 33"
+              added = 1
+              next
+            }
+            /^android\.api\s*=/ && !added {
+              print "android.api = 33"
+              added = 1
+              next
+            }
+            { print }
+          ' buildozer.spec > buildozer.spec.tmp && mv buildozer.spec.tmp buildozer.spec
           
-          echo "Updated buildozer.spec configuration"
-          grep -i "android\." "${{ env.BUILD_DIR }}/buildozer.spec"
+          echo "更新后的 android 配置："
+          grep -i "android\." buildozer.spec || echo "没有找到 android 配置"
         else
-          echo "No buildozer.spec file found, will create one"
-          cd ${{ env.BUILD_DIR }}
+          echo "创建新的 buildozer.spec"
           buildozer init
         fi
 
