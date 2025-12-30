@@ -48,35 +48,16 @@ jobs:
         pip install buildozer
         pip install kivy
 
-    - name: Create simple Kivy app
+    - name: Check if main.py exists
       run: |
         cd ${{ env.BUILD_DIR }}
-        
-        # 如果 main.py 不存在，创建最简单的版本
         if [ ! -f "main.py" ]; then
-          echo "创建最简单的 Kivy 应用..."
-          cat > main.py << 'EOF'
-from kivy.app import App
-from kivy.uix.label import Label
-
-class MyApp(App):
-    def build(self):
-        return Label(text="Hello World")
-
-if __name__ == "__main__":
-    MyApp().run()
-EOF
-          echo "✅ main.py 创建完成"
+          echo "❌ 错误: main.py 文件不存在"
+          echo "请在项目根目录创建 main.py"
+          exit 1
         fi
-        
-        echo "当前目录文件:"
-        ls -la
-
-    - name: Test Kivy import
-      run: |
-        cd ${{ env.BUILD_DIR }}
-        echo "测试 Kivy 导入..."
-        python3 -c "import kivy; print('Kivy 版本:', kivy.__version__)"
+        echo "✅ main.py 存在"
+        cat main.py
 
     - name: Initialize Buildozer
       run: |
