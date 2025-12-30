@@ -79,11 +79,11 @@ jobs:
         unzip commandlinetools-linux-9477386_latest.zip -d $ANDROID_HOME/cmdline-tools
         mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
         
-        # 安装 SDK 平台和 build-tools（使用 API 33）
+        # 安装 SDK 平台和 build-tools（根据您的 android.api = 30 安装对应的版本）
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_HOME \
             "platform-tools" \
-            "platforms;android-33" \
-            "build-tools;33.0.0"
+            "platforms;android-30" \
+            "build-tools;30.0.3"
         
         # 验证安装
         echo "Android SDK installed at: $ANDROID_HOME"
@@ -102,42 +102,65 @@ jobs:
         echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
         echo "PATH=$PATH" >> $GITHUB_ENV
 
-    - name: Update buildozer.spec if needed
+    - name: Debug buildozer.spec
       run: |
         cd ${{ env.BUILD_DIR }}
-        
+        echo "=== 检查 buildozer.spec 文件 ==="
         if [ -f "buildozer.spec" ]; then
-          echo "处理 buildozer.spec 文件..."
-          
+          echo "文件存在"
+          echo "=== 完整内容 ==="
+          cat buildozer.spec
+          echo "=== 检查 [app] 部分 ==="
+          sed -n '/^\[app\]/,/^\[/p' buildozer.spec
+          echo "=== 检查 android 相关配置 ==="
+          grep -n "android\." buildozer.spec
+        else
+          echo "buildozer.spec 文件不存在"
+          buildozer init
+        fi
+
+    - name: Fix duplicate android.api in buildozer.spec
+      run: |
+        cd ${{ env.BUILD_DIR }}
+        if [ -f "buildozer.spec" ]; then
+          echo "修复 buildozer.spec 中的重复配置..."
           # 备份原始文件
           cp buildozer.spec buildozer.spec.backup
           
-          # 1. 首先删除所有 android.sdk 和 android.api 行
+          # 方法1：直接删除 android.sdk 行
           sed -i '/^android\.sdk\s*=/d' buildozer.spec
-          sed -i '/^android\.api\s*=/d' buildozer.spec
           
-          # 2. 在 [app] 部分后添加 android.api
-          # 使用 awk 确保只在 [app] 部分后添加一次
-          awk '
-            /^\[app\]$/ { 
-              print $0
-              print "android.api = 33"
-              added = 1
-              next
-            }
-            /^android\.api\s*=/ && !added {
-              print "android.api = 33"
-              added = 1
-              next
-            }
-            { print }
-          ' buildozer.spec > buildozer.spec.tmp && mv buildozer.spec.tmp buildozer.spec
+          # 方法2：或者使用更安全的Python脚本
+          python3 << 'EOF'
+import configparser
+import os
+
+config_path = 'buildozer.spec'
+if os.path.exists(config_path):
+    config = configparser.ConfigParser()
+    config.read(config_path)
+    
+    if 'app' in config:
+        # 移除 android.sdk
+        if 'android.sdk' in config['app']:
+            config['app'].pop('android.sdk')
+            print("已移除 android.sdk")
+        
+        # 确保 android.api 存在
+        if 'android.api' not in config['app']:
+            config['app']['android.api'] = '30'
+            print("已添加 android.api = 30")
+        else:
+            print(f"android.api = {config['app']['android.api']}")
+    
+    # 写回文件
+    with open(config_path, 'w') as f:
+        config.write(f)
+    print("修复完成")
+EOF
           
-          echo "更新后的 android 配置："
-          grep -i "android\." buildozer.spec || echo "没有找到 android 配置"
-        else
-          echo "创建新的 buildozer.spec"
-          buildozer init
+          echo "修复后的 android 配置："
+          grep -n "android\." buildozer.spec
         fi
 
     - name: Build with Buildozer
@@ -150,8 +173,8 @@ jobs:
         # 清理之前的构建
         buildozer android clean || true
         
-        # 执行构建
-        buildozer android debug
+        # 执行构建（添加详细日志）
+        buildozer -v android debug
 
     - name: List APK files
       run: |
