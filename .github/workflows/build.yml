@@ -11,7 +11,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45  # 增加超时时间
 
     steps:
     - name: Checkout code
@@ -50,62 +50,158 @@ jobs:
         pip3 install buildozer
         pip3 install cython
 
-    - name: Set up Android SDK for Buildozer
+    - name: Check Android SDK installation
       run: |
-        # 使用系统已安装的Android SDK
-        export ANDROID_HOME=/usr/local/lib/android/sdk
-        export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
+        echo "=== 检查 Android SDK ==="
+        ANDROID_SDK="/usr/local/lib/android/sdk"
+        echo "SDK 路径: $ANDROID_SDK"
         
-        # 创建Buildozer的Android SDK目录，并链接到系统的SDK
-        mkdir -p ~/.buildozer/android/platform
-        ln -sfn $ANDROID_HOME ~/.buildozer/android/platform/android-sdk
+        # 检查目录结构
+        echo "目录内容:"
+        ls -la $ANDROID_SDK/ || echo "SDK 目录不存在"
         
-        # 设置环境变量，供后续步骤使用
-        echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
-        echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+        echo ""
+        echo "build-tools 版本:"
+        ls -la $ANDROID_SDK/build-tools/ 2>/dev/null || echo "没有 build-tools"
         
-        # 检查platform-tools是否已安装
-        ls -la $ANDROID_HOME/platform-tools || echo "platform-tools not found"
-        
-        # 检查sdkmanager是否可用
-        which sdkmanager || echo "sdkmanager not in PATH"
-        sdkmanager --list 2>&1 | head -20 || echo "sdkmanager failed"
+        echo ""
+        echo "platforms 版本:"
+        ls -la $ANDROID_SDK/platforms/ 2>/dev/null || echo "没有 platforms"
 
-    - name: Prepare buildozer.spec
+    - name: Create minimal buildozer.spec
       run: |
         cd ${{ env.BUILD_DIR }}
-        if [ -f "buildozer.spec" ]; then
-          echo "更新 buildozer.spec..."
-          # 移除android.sdk配置（如果存在）
-          sed -i '/^android\.sdk\s*=/d' buildozer.spec
-          # 确保android.api是33
-          sed -i 's/android\.api\s*=\s*[0-9]*/android.api = 33/g' buildozer.spec
-          # 设置android.sdk_path指向系统的Android SDK
-          echo "android.sdk_path = /usr/local/lib/android/sdk" >> buildozer.spec
+        
+        # 如果 buildozer.spec 不存在，创建一个简单的
+        if [ ! -f "buildozer.spec" ]; then
+          echo "创建 buildozer.spec 文件..."
+          
+          cat > buildozer.spec << 'EOF'
+[app]
+# 应用标题
+title = My App
+# 包名
+package.name = myapp
+# 包域名
+package.domain = org.test
+# 源代码目录
+source.dir = .
+# 包含的文件类型
+source.include_exts = py,png,jpg,kv,atlas
+# 版本号
+version = 1.0
+# Python 版本
+requirements = python3,kivy==2.1.0
+# 屏幕方向
+orientation = portrait
+# 权限
+android.permissions = INTERNET
+
+# Android 配置
+android.api = 34
+android.minapi = 21
+android.ndk = 27.3.13750724
+android.sdk_path = /usr/local/lib/android/sdk
+
+[buildozer]
+log_level = 2
+EOF
         else
-          echo "初始化 buildozer.spec..."
-          buildozer init
+          echo "使用现有的 buildozer.spec"
+          echo "当前配置:"
+          cat buildozer.spec
         fi
 
-    - name: Build APK with Buildozer
+    - name: Build with Buildozer (step by step)
       run: |
         cd ${{ env.BUILD_DIR }}
+        
         # 设置环境变量
-        export ANDROID_HOME=/usr/local/lib/android/sdk
         export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-        export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/tools:$ANDROID_HOME/cmdline-tools/16.0/bin:$PATH
+        export ANDROID_HOME=/usr/local/lib/android/sdk
         
-        echo "检查aidl..."
-        which aidl || echo "aidl not found"
-        find $ANDROID_HOME -name "aidl" -type f 2>/dev/null | head -5
+        echo "=== 构建步骤 ==="
         
-        # 构建
-        buildozer -v android debug 2>&1 | tail -100
+        # 1. 检查配置
+        echo "1. 检查配置..."
+        buildozer android check 2>&1 || true
+        
+        # 2. 更新依赖
+        echo ""
+        echo "2. 更新依赖..."
+        buildozer android update 2>&1 | tail -50 || true
+        
+        # 3. 清理
+        echo ""
+        echo "3. 清理..."
+        buildozer android clean 2>&1 || true
+        
+        # 4. 执行构建
+        echo ""
+        echo "4. 开始构建..."
+        buildozer -v android debug 2>&1 | tee build_output.log
+        
+        # 检查构建是否成功
+        if [ ${PIPESTATUS[0]} -eq 0 ]; then
+          echo "构建成功！"
+        else
+          echo "构建可能失败，查看错误..."
+          tail -100 build_output.log
+          exit 1
+        fi
 
-    - name: Upload APK
-      if: success()
+    - name: Search for APK files everywhere
+      run: |
+        echo "=== 全面搜索 APK 文件 ==="
+        
+        echo "1. 在 bin/ 目录中:"
+        find bin/ -name "*.apk" -type f 2>/dev/null | while read f; do
+          echo "  找到: $f (大小: $(ls -lh "$f" | awk '{print $5}'))"
+        done
+        
+        echo ""
+        echo "2. 在 .buildozer/ 目录中:"
+        find .buildozer/ -name "*.apk" -type f 2>/dev/null | while read f; do
+          echo "  找到: $f (大小: $(ls -lh "$f" | awk '{print $5}'))"
+        done
+        
+        echo ""
+        echo "3. 在整个项目目录中:"
+        find . -name "*.apk" -type f 2>/dev/null | while read f; do
+          echo "  找到: $f (大小: $(ls -lh "$f" | awk '{print $5}'))"
+        done
+        
+        echo ""
+        echo "4. 检查常见 Buildozer 输出目录:"
+        echo "  检查 .buildozer/android/platform/build-*/bin/:"
+        find .buildozer/android/platform -name "*.apk" -type f 2>/dev/null | while read f; do
+          echo "    找到: $f"
+        done
+        
+        # 如果没有找到任何 APK
+        if [ -z "$(find . -name '*.apk' -type f 2>/dev/null)" ]; then
+          echo "警告: 没有找到任何 APK 文件"
+          echo "构建可能失败了，检查日志..."
+        fi
+
+    - name: Upload any found APK files
+      if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: android-apk
-        path: bin/*.apk
+        name: android-apk-files
+        path: |
+          **/*.apk
+          bin/
+          .buildozer/android/platform/build-*/bin/
+        if-no-files-found: warn
+        retention-days: 7
+
+    - name: Upload build logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-logs
+        path: |
+          ${{ env.BUILD_DIR }}/build_output.log
+          ${{ env.BUILD_DIR }}/.buildozer/*.log
         retention-days: 7
