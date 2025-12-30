@@ -56,7 +56,7 @@ jobs:
           echo "创建测试 Kivy 应用..."
           cat > main.py << 'END'
 import kivy
-kivy.require('2.0.0')
+kivy.require("2.0.0")
 
 from kivy.app import App
 from kivy.uix.label import Label
