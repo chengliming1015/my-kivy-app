@@ -32,9 +32,9 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
-      with:
-        # 如果子模块存在，可以取消注释下面一行
-        # submodules: recursive
+      # 如果子模块存在，可以取消注释下面一行
+      # with:
+      #   submodules: recursive
 
     - name: Set up Python
       uses: actions/setup-python@v4
