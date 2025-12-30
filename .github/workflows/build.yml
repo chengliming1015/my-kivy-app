@@ -26,20 +26,20 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-            build-essential \
-            git \
-            python3-pip \
-            python3-dev \
-            libffi-dev \
-            libssl-dev \
-            libncurses5-dev \
-            libsqlite3-dev \
-            libreadline-dev \
-            zip \
-            unzip \
-            curl \
-            wget \
-            openjdk-11-jdk
+          build-essential \
+          git \
+          python3-pip \
+          python3-dev \
+          libffi-dev \
+          libssl-dev \
+          libncurses5-dev \
+          libsqlite3-dev \
+          libreadline-dev \
+          zip \
+          unzip \
+          curl \
+          wget \
+          openjdk-11-jdk
 
     - name: Install Buildozer
       run: |
@@ -54,20 +54,18 @@ jobs:
         # 确保有一个简单的 Kivy 应用
         if [ ! -f "main.py" ]; then
           echo "创建测试 Kivy 应用..."
-          cat > main.py << 'EOF'
-import kivy
-kivy.require('2.0.0')
-
-from kivy.app import App
-from kivy.uix.label import Label
-
-class MyApp(App):
-    def build(self):
-        return Label(text='Hello World')
-
-if __name__ == '__main__':
-    MyApp().run()
-EOF
+          echo "import kivy" > main.py
+          echo "kivy.require('2.0.0')" >> main.py
+          echo "" >> main.py
+          echo "from kivy.app import App" >> main.py
+          echo "from kivy.uix.label import Label" >> main.py
+          echo "" >> main.py
+          echo "class MyApp(App):" >> main.py
+          echo "    def build(self):" >> main.py
+          echo "        return Label(text='Hello World')" >> main.py
+          echo "" >> main.py
+          echo "if __name__ == '__main__':" >> main.py
+          echo "    MyApp().run()" >> main.py
           echo "测试应用创建完成"
         fi
         
@@ -93,7 +91,6 @@ EOF
       run: |
         cd ${{ env.BUILD_DIR }}
         
-        # 更新 buildozer.spec 配置
         echo "更新 buildozer.spec 配置..."
         
         # 备份原始配置
@@ -137,24 +134,13 @@ EOF
         else
           echo "   ❌ build-tools 目录不存在"
         fi
-        
-        echo ""
-        echo "3. 检查 aidl 命令:"
-        find "$ANDROID_SDK" -name "aidl" -type f 2>/dev/null | head -5
-        
-        echo ""
-        echo "4. 环境变量:"
-        echo "   ANDROID_HOME: $ANDROID_HOME"
-        echo "   ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
 
-    - name: Build with Buildozer (verbose)
+    - name: Build with Buildozer
       run: |
         cd ${{ env.BUILD_DIR }}
         
         echo "=== 开始构建 APK ==="
         echo "当前目录: $(pwd)"
-        echo "文件列表:"
-        ls -la
         
         # 设置环境变量
         export ANDROID_SDK_ROOT="/usr/local/lib/android/sdk"
@@ -166,62 +152,30 @@ EOF
         
         # 清理
         echo "清理之前的构建..."
-        buildozer android clean 2>&1 | tail -20
+        buildozer android clean
         
-        # 检查配置
-        echo "检查配置..."
-        buildozer android check 2>&1 | tail -20
-        
-        # 执行构建 - 我们将输出重定向到文件并同时显示
-        echo "开始构建 APK (这可能需要几分钟)..."
-        
-        # 使用 timeout 命令防止无限期运行
-        timeout 2400 buildozer -v android debug 2>&1 | tee full_build.log || {
-          echo "构建过程可能超时或失败"
-          echo "查看最后 100 行日志:"
-          tail -100 full_build.log
-        }
+        # 执行构建
+        echo "开始构建 APK..."
+        buildozer android debug 2>&1 | tee build_output.log
         
         echo "=== 构建过程结束 ==="
-        
-        # 显示构建日志的关键部分
-        if [ -f "full_build.log" ]; then
-          echo "构建日志大小: $(wc -l < full_build.log) 行"
-          echo "最后 50 行:"
-          tail -50 full_build.log
-        fi
 
     - name: Check build results
       run: |
         echo "=== 检查构建结果 ==="
         
         # 搜索所有 APK 文件
-        echo "1. 搜索所有 APK 文件:"
+        echo "搜索所有 APK 文件..."
         find . -name "*.apk" -type f 2>/dev/null | while read f; do
-          echo "   ✅ 找到: $f"
-          ls -lh "$f"
+          echo "找到 APK 文件: $f"
+          ls -la "$f"
         done
         
         # 如果没有找到
         if [ -z "$(find . -name '*.apk' -type f 2>/dev/null)" ]; then
-          echo "   ❌ 没有找到任何 APK 文件"
-          
-          # 检查 Buildozer 输出目录
-          echo ""
-          echo "2. 检查 Buildozer 输出目录:"
-          if [ -d ".buildozer" ]; then
-            echo "   .buildozer 目录存在"
-            find .buildozer -name "*.apk" -type f 2>/dev/null | while read f; do
-              echo "   ✅ 在 .buildozer 中找到: $f"
-            done
-            
-            # 检查日志文件
-            echo ""
-            echo "3. 检查日志文件:"
-            find .buildozer -name "*.log" -type f 2>/dev/null | head -5
-          else
-            echo "   .buildozer 目录不存在"
-          fi
+          echo "没有找到 APK 文件，构建可能失败。"
+          echo "查看构建日志:"
+          tail -100 build_output.log
         fi
 
     - name: Upload build logs
@@ -229,10 +183,7 @@ EOF
       uses: actions/upload-artifact@v4
       with:
         name: build-logs
-        path: |
-          ${{ env.BUILD_DIR }}/full_build.log
-          ${{ env.BUILD_DIR }}/.buildozer/*.log
-        if-no-files-found: warn
+        path: ${{ env.BUILD_DIR }}/build_output.log
         retention-days: 7
 
     - name: Upload APK if exists
@@ -240,9 +191,6 @@ EOF
       uses: actions/upload-artifact@v4
       with:
         name: android-apk
-        path: |
-          ${{ env.BUILD_DIR }}/bin/*.apk
-          ${{ env.BUILD_DIR }}/*.apk
-          ${{ env.BUILD_DIR }}/.buildozer/**/*.apk
+        path: ${{ env.BUILD_DIR }}/*.apk
         if-no-files-found: ignore
         retention-days: 7
