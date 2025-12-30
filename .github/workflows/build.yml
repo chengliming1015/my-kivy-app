@@ -3,18 +3,15 @@ name: Build Android APK
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 env:
-  APK_OUTPUT_DIR: bin
   BUILD_DIR: .
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60  # 增加超时时间，Android SDK 安装较慢
+    timeout-minutes: 60
 
     steps:
     - name: Checkout code
@@ -45,137 +42,69 @@ jobs:
             unzip \
             curl \
             wget \
-            openjdk-11-jdk \
-            unzip \
-            zlib1g-dev
+            openjdk-11-jdk
+
+    - name: Set up Android SDK
+      uses: android-actions/setup-android@v3
 
     - name: Install Buildozer
       run: |
         pip3 install --upgrade pip
-        pip3 install buildozer
+        pip3 install buildozer==1.5.0  # 使用特定版本
         pip3 install cython==0.29.36
 
-    - name: Set up Android SDK
+    - name: Set environment variables for Buildozer
       run: |
-        # 创建目录
-        mkdir -p $HOME/android-sdk
-        export ANDROID_HOME=$HOME/android-sdk
-        export ANDROID_SDK_ROOT=$ANDROID_HOME
+        # 设置 Android SDK 环境变量
+        echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+        echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
         
-        # 下载命令行工具
-        wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
-        unzip -q commandlinetools-linux-9477386_latest.zip -d $ANDROID_HOME
-        mv $ANDROID_HOME/cmdline-tools $ANDROID_HOME/tools
+        # 检查 aidl
+        echo "检查 aidl 是否可用:"
+        find $ANDROID_SDK_ROOT -name "aidl" -type f 2>/dev/null | head -5
+        echo ""
         
-        # 创建必要的目录结构
-        mkdir -p $ANDROID_HOME/cmdline-tools
-        ln -sf $ANDROID_HOME/tools $ANDROID_HOME/cmdline-tools/latest
-        
-        # 接受所有许可证
-        yes | $ANDROID_HOME/tools/bin/sdkmanager --sdk_root=$ANDROID_HOME --licenses
-        
-        # 安装 Android SDK 组件
-        $ANDROID_HOME/tools/bin/sdkmanager --sdk_root=$ANDROID_HOME \
-            "platform-tools" \
-            "platforms;android-33" \
-            "build-tools;33.0.0" \
-            "cmdline-tools;latest" \
-            "patcher;v4" \
-            "tools"
-        
-        # 验证安装
-        echo "Android SDK 安装完成"
-        echo "ANDROID_HOME: $ANDROID_HOME"
-        ls -la $ANDROID_HOME/build-tools/33.0.0/aidl
-        chmod +x $ANDROID_HOME/build-tools/33.0.0/aidl
-        
-        # 设置环境变量
-        echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
-        echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
-        echo "PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin:$ANDROID_HOME/build-tools/33.0.0:$PATH" >> $GITHUB_ENV
-
-    - name: Set up Buildozer environment
-      run: |
-        # 创建 Buildozer 需要的目录
+        # 创建 Buildozer 配置目录
         mkdir -p ~/.buildozer/android/platform
-        
-        # 创建符号链接让 Buildozer 能找到 Android SDK
-        ln -sf $ANDROID_HOME ~/.buildozer/android/platform/android-sdk || true
-        
-        # 检查 aidl 是否在 PATH 中
-        which aidl || echo "aidl 不在 PATH 中"
-        find $ANDROID_HOME -name "aidl" -type f | head -5
-        
-        # 显示环境信息
-        echo "Buildozer 环境设置完成"
-        echo "PATH: $PATH"
+        ln -sf $ANDROID_SDK_ROOT ~/.buildozer/android/platform/android-sdk 2>/dev/null || true
 
-    - name: Update buildozer.spec for API 33
+    - name: Prepare buildozer.spec
       run: |
         cd ${{ env.BUILD_DIR }}
         if [ -f "buildozer.spec" ]; then
-          # 备份原始文件
-          cp buildozer.spec buildozer.spec.backup
-          
-          # 更新 Android API 版本到 33
+          echo "更新 buildozer.spec..."
+          # 更新 API 版本
           sed -i 's/android\.api\s*=\s*[0-9]*/android.api = 33/g' buildozer.spec
-          
-          # 删除 android.sdk 配置（如果存在）
           sed -i '/^android\.sdk\s*=/d' buildozer.spec
-          
-          # 更新 NDK 版本（如果需要）
-          sed -i 's/android\.ndk\s*=\s*[0-9a-zA-Z]*/android.ndk = 25b/g' buildozer.spec
-          
-          echo "更新后的 buildozer.spec 配置："
+          echo "当前配置:"
           grep -i "android\." buildozer.spec
         else
-          echo "创建 buildozer.spec 文件"
+          echo "初始化 buildozer.spec..."
           buildozer init
         fi
 
-    - name: Initialize Buildozer
+    - name: Build APK with Buildozer
       run: |
         cd ${{ env.BUILD_DIR }}
-        # 清理之前的构建
-        buildozer android clean || true
         
-        # 更新依赖
-        buildozer android update || true
-
-    - name: Build with Buildozer
-      run: |
-        cd ${{ env.BUILD_DIR }}
         # 设置环境变量
-        export ANDROID_HOME=$HOME/android-sdk
-        export ANDROID_SDK_ROOT=$ANDROID_HOME
-        export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin:$ANDROID_HOME/build-tools/33.0.0:$PATH
+        export ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT"
+        export ANDROID_HOME="$ANDROID_SDK_ROOT"
+        export PATH="$ANDROID_SDK_ROOT/tools:$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/build-tools/33.0.0:$PATH"
         
-        # 验证 aidl
-        echo "检查 aidl..."
-        which aidl || (echo "aidl 未找到" && find $ANDROID_HOME -name "aidl" -type f)
+        echo "环境变量验证:"
+        echo "PATH: $PATH"
+        which aidl || echo "aidl 不在 PATH 中"
         
-        # 执行构建（添加更多日志）
-        echo "开始构建 APK..."
-        buildozer -v android debug 2>&1 | tail -100
+        # 清理并构建
+        echo "开始构建..."
+        buildozer android clean 2>&1 || true
+        buildozer -v android debug 2>&1
 
-    - name: List APK files
-      run: |
-        echo "检查输出目录..."
-        ls -la ${{ env.APK_OUTPUT_DIR }}/ || echo "目录不存在"
-        find . -name "*.apk" -type f | head -10
-
-    - name: Upload APK
+    - name: Upload APK artifact
       if: success()
       uses: actions/upload-artifact@v4
       with:
         name: android-apk
-        path: ${{ env.APK_OUTPUT_DIR }}/*.apk
-        retention-days: 7
-
-    - name: Upload Build Logs
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-logs
-        path: ${{ env.BUILD_DIR }}/buildozer-*.log
+        path: bin/*.apk
         retention-days: 7
