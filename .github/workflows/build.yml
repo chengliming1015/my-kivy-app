@@ -3,24 +3,91 @@ name: Build Android APK
 on:
   push:
     branches: [ main ]
+    paths-ignore:             # 忽略文档等非代码文件的更改
+      - '**/*.md'
+      - '**/*.txt'
+      - '**/*.rst'
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - '**/*.md'
+      - '**/*.txt'
+      - '**/*.rst'
+
+  # 允许手动触发
+  workflow_dispatch:
+
+# 设置环境变量，方便后续步骤使用
+env:
+  APK_OUTPUT_DIR: bin
+  BUILD_DIR: .
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
+    # 设置超时时间，避免无限运行
+    timeout-minutes: 30
+
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Build with Buildozer
-      uses: ArtemSBulgakov/buildozer-action@v1
+    - name: Checkout code
+      uses: actions/checkout@v3
       with:
-        buildozer_version: stable
-        
+        # 如果子模块存在，可以取消注释下面一行
+        # submodules: recursive
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'  # Buildozer 需要 Python 3.8 或更高版本
+
+    - name: Install Buildozer dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+            build-essential \
+            git \
+            python3-pip \
+            python3-dev \
+            libffi-dev \
+            libssl-dev \
+            libncurses5-dev \
+            libsqlite3-dev \
+            libreadline-dev \
+            libtk8.6 \
+            libgdm-dev \
+            libdb4o-cil-dev \
+            libpcap-dev \
+            zip \
+            unzip
+
+    - name: Install Buildozer
+      run: |
+        pip3 install --upgrade pip
+        pip3 install buildozer
+        pip3 install cython  # 可选，但某些项目需要
+
+    - name: Build with Buildozer
+      run: |
+        cd ${{ env.BUILD_DIR }}
+        buildozer android debug  # 或根据需求改为 release
+
+    - name: List APK files
+      run: |
+        ls -la ${{ env.APK_OUTPUT_DIR }}/
+
     - name: Upload APK
       uses: actions/upload-artifact@v3
       with:
         name: android-apk
-        path: bin/*.apk
-        retention-days: 5
+        path: ${{ env.APK_OUTPUT_DIR }}/*.apk
+        retention-days: 7  # 延长保留时间，便于调试
+
+    # 可选：上传构建日志
+    - name: Upload Build Logs
+      if: always()  # 即使失败也上传日志
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-logs
+        path: ${{ env.BUILD_DIR }}/buildozer-*.log
+        retention-days: 7
