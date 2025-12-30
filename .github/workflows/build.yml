@@ -1,63 +1,80 @@
-name: Build Android APK
+name: 'Kivy App to APK'
+description: 'Convert Kivy app to APK'
+inputs:
+  python-version:
+    description: 'Python version to use'
+    default: '3.8'
+  work-dir:
+    default: '.'
+    description: 'Working directory'
+  buildozer-cmd:
+    default: 'buildozer android debug'
+    description: 'Buildozer command to use'
 
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
+# Add the branding section
+branding:
+  color: 'green'
+  icon: 'play'
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
+runs:
+  using: "composite"
+  steps:
+    - name: Setup python
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.9'
+        architecture: x64
+        python-version: ${{ inputs.python-version }}
 
-    - name: Install Buildozer dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-            build-essential \
-            git \
-            python3-pip \
-            python3-dev \
-            libffi-dev \
-            libssl-dev \
-            libncurses5-dev \
-            libsqlite3-dev \
-            libreadline-dev \
-            libtk8.6 \
-            libgdm-dev \
-            libpcap-dev \
-            zip \
-            unzip \
-            curl \
-            wget \
-            openjdk-11-jdk
+    - name: Setup Java 17 required by Gradle
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'  # or 'zulu','liberica', etc.
+        java-version: '17'
 
-    - name: Install Buildozer
+    - name: Set JAVA_HOME
       run: |
-        pip3 install --upgrade pip
-        pip3 install buildozer
-        pip3 install cython
+        echo "JAVA_HOME=$JAVA_HOME" >> $GITHUB_ENV
+      shell: bash
+
+    - name: Prepare virtual environment
+      run: |
+        python3 -m venv venv
+        source venv/bin/activate
+        echo "Using Python==$(python --version)"
+      shell: bash
+      
+    - name: Install and upgrade dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y git \
+          zip \
+          unzip \
+          openjdk-17-jdk \
+          python3-pip \
+          autoconf \
+          libtool \
+          pkg-config \
+          zlib1g-dev \
+          libncurses5-dev \
+          libncursesw5-dev \
+          libtinfo5 \
+          cmake \
+          libffi-dev \
+          libssl-dev
+        export PATH=$PATH:~/.local/bin/
+        python3 -m pip install --upgrade \
+          Cython==0.29.33 \
+          buildozer
+      shell: bash
+
+    - name: Install requirements in requirements.txt if it exists
+      run: |
+        if [ -f requirements.txt ]; then
+          python3 -m pip install -r requirements.txt
+        fi
+      shell: bash
 
     - name: Build with Buildozer
       run: |
-        # 如果不存在buildozer.spec，则初始化
-        if [ ! -f "buildozer.spec" ]; then
-          buildozer init
-        fi
-        buildozer android debug
-
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: android-apk
-        path: bin/*.apk
-        retention-days: 5
+        ${{ inputs.buildozer-cmd }}
+      shell: bash
