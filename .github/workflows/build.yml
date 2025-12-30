@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+env:
+  BUILD_DIR: .
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,89 +25,235 @@ jobs:
     - name: Install Buildozer dependencies
       run: |
         sudo apt-get update
-        # 安装基本依赖，避免那些可能不存在的包
         sudo apt-get install -y \
-            build-essential \
-            git \
-            python3-pip \
-            python3-dev \
-            libffi-dev \
-            libssl-dev \
-            libncurses5-dev \
-            libsqlite3-dev \
-            libreadline-dev \
-            libtk8.6 \
-            libgdm-dev \
-            libpcap-dev \
-            zip \
-            unzip \
-            curl \
-            wget \
-            openjdk-11-jdk
+          build-essential \
+          git \
+          python3-pip \
+          python3-dev \
+          libffi-dev \
+          libssl-dev \
+          libncurses5-dev \
+          libsqlite3-dev \
+          libreadline-dev \
+          zip \
+          unzip \
+          curl \
+          wget \
+          openjdk-17-jdk
 
-    - name: Install Buildozer and Cython
+    - name: Install Buildozer
       run: |
         pip3 install --upgrade pip
         pip3 install buildozer
         pip3 install cython
 
-    - name: Create a minimal Kivy app if not present
+    - name: Create test application
       run: |
+        cd ${{ env.BUILD_DIR }}
+        
+        # 确保有一个简单的 Kivy 应用
         if [ ! -f "main.py" ]; then
-          echo 'print("Hello World")' > main.py
-        fi
+          echo "创建测试 Kivy 应用..."
+          cat > main.py << 'END'
+import kivy
+kivy.require("2.0.0")
 
-    - name: Initialize Buildozer if needed
+from kivy.app import App
+from kivy.uix.label import Label
+
+class MyApp(App):
+    def build(self):
+        return Label(text='Hello World')
+
+if __name__ == '__main__':
+    MyApp().run()
+END
+          echo "测试应用创建完成"
+        fi
+        
+        # 显示文件列表
+        echo "项目文件:"
+        ls -la
+
+    - name: Initialize Buildozer
       run: |
+        cd ${{ env.BUILD_DIR }}
+        
+        # 初始化 Buildozer 配置文件
         if [ ! -f "buildozer.spec" ]; then
+          echo "初始化 buildozer.spec..."
           buildozer init
         fi
+        
+        # 显示配置
+        echo "=== buildozer.spec 配置 ==="
+        cat buildozer.spec
 
-    - name: Update buildozer.spec to use system Android SDK
+    - name: Configure Buildozer for GitHub Actions
       run: |
-        # 确保 buildozer.spec 存在
-        if [ -f "buildozer.spec" ]; then
-          # 移除可能引起问题的配置
-          sed -i '/^android.sdk\s*=/d' buildozer.spec
-          # 添加系统 Android SDK 路径
-          if ! grep -q '^android.sdk_path' buildozer.spec; then
-            echo "android.sdk_path = /usr/local/lib/android/sdk" >> buildozer.spec
-          fi
-          # 设置 Android API 版本为 33，以匹配系统中可能已安装的版本
-          sed -i '/^android.api\s*=/d' buildozer.spec
-          echo "android.api = 33" >> buildozer.spec
-          # 设置最小 API
-          sed -i '/^android.minapi\s*=/d' buildozer.spec
-          echo "android.minapi = 21" >> buildozer.spec
+        cd ${{ env.BUILD_DIR }}
+        
+        echo "更新 buildozer.spec 配置..."
+        
+        # 备份原始配置
+        cp buildozer.spec buildozer.spec.backup
+        
+        # 使用系统安装的 Android SDK
+        echo "android.sdk_path = /usr/local/lib/android/sdk" >> buildozer.spec
+        
+        # 设置 Android API 版本为 33（稳定版）
+        sed -i '/^android\.api\s*=/d' buildozer.spec
+        echo "android.api = 33" >> buildozer.spec
+        
+        # 设置最小 API
+        sed -i '/^android\.minapi\s*=/d' buildozer.spec
+        echo "android.minapi = 21" >> buildozer.spec
+        
+        # 移除旧的 android.sdk 配置
+        sed -i '/^android\.sdk\s*=/d' buildozer.spec
+        
+        echo "更新后的配置:"
+        grep -i "android\." buildozer.spec
+
+    - name: Pre-accept Android SDK licenses
+      run: |
+        # 创建 Android SDK 目录
+        mkdir -p ~/.android
+        
+        # 创建空的 repositories.cfg 文件
+        touch ~/.android/repositories.cfg
+        
+        # 提前接受 Android SDK 许可协议
+        echo "预先接受 Android SDK 许可协议..."
+        
+        # 方法1：使用 yes 命令自动接受
+        yes | sdkmanager --licenses 2>&1 | head -50 || true
+        
+        # 方法2：手动创建接受的许可证文件
+        mkdir -p ~/.android
+        echo "8933bad161af4178b1185d1a37fbf41ea5269c55" > ~/.android/licenses/android-sdk-license
+        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> ~/.android/licenses/android-sdk-license
+        echo "84831b9409646a918e30573b4ad6d4e4e2fae60e" >> ~/.android/licenses/android-sdk-license
+        
+        echo "许可证文件内容:"
+        cat ~/.android/licenses/android-sdk-license 2>/dev/null || echo "未创建许可证文件"
+
+    - name: Setup Android SDK manually
+      run: |
+        echo "手动设置 Android SDK..."
+        
+        # 创建目录
+        mkdir -p ~/android-sdk
+        export ANDROID_HOME=~/android-sdk
+        export ANDROID_SDK_ROOT=~/android-sdk
+        
+        # 下载命令行工具
+        wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+        unzip commandlinetools-linux-9477386_latest.zip -d $ANDROID_HOME
+        mv $ANDROID_HOME/cmdline-tools $ANDROID_HOME/tools
+        
+        # 接受许可协议
+        echo "y" | $ANDROID_HOME/tools/bin/sdkmanager --sdk_root=$ANDROID_HOME --licenses
+        
+        # 安装必要的组件
+        echo "y" | $ANDROID_HOME/tools/bin/sdkmanager --sdk_root=$ANDROID_HOME \
+          "platform-tools" \
+          "platforms;android-33" \
+          "build-tools;33.0.0"
+        
+        # 验证安装
+        echo "Android SDK 安装完成"
+        ls -la $ANDROID_HOME/build-tools/33.0.0/aidl
+        chmod +x $ANDROID_HOME/build-tools/33.0.0/aidl
+        
+        # 设置环境变量
+        echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+
+    - name: Build with Buildozer (with license fix)
+      run: |
+        cd ${{ env.BUILD_DIR }}
+        
+        echo "=== 开始构建 APK ==="
+        echo "当前目录: $(pwd)"
+        
+        # 设置环境变量
+        export ANDROID_HOME=~/android-sdk
+        export ANDROID_SDK_ROOT=~/android-sdk
+        export PATH=$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/33.0.0:$PATH
+        
+        echo "环境变量:"
+        echo "ANDROID_HOME=$ANDROID_HOME"
+        echo "PATH 中的 Android 工具:"
+        echo $PATH | tr ':' '\n' | grep -i android || true
+        
+        # 检查 aidl 是否可用
+        echo "检查 aidl:"
+        which aidl || find $ANDROID_HOME -name "aidl" -type f 2>/dev/null | head -5
+        
+        # 清理
+        echo "清理之前的构建..."
+        buildozer android clean 2>&1 || true
+        
+        # 执行构建（使用详细日志）
+        echo "开始构建 APK..."
+        
+        # 使用 timeout 防止无限等待
+        timeout 1800 buildozer -v android debug 2>&1 | tee build_output.log
+        
+        # 检查构建状态
+        if [ ${PIPESTATUS[0]} -eq 0 ]; then
+          echo "✅ 构建成功！"
+        else
+          echo "❌ 构建可能失败"
+          echo "查看最后 100 行日志:"
+          tail -100 build_output.log
         fi
 
-    - name: Build with Buildozer
+    - name: Check build results
       run: |
-        # 设置环境变量，指向系统中已安装的 Android SDK
-        export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-        export ANDROID_HOME=/usr/local/lib/android/sdk
-        # 尝试构建，并将输出重定向到文件
-        buildozer android clean 2>&1 | tee build.log
-        buildozer android debug 2>&1 | tee -a build.log
+        echo "=== 检查构建结果 ==="
+        
+        echo "当前目录: $(pwd)"
+        
+        # 检查日志文件
+        if [ -f "build_output.log" ]; then
+          echo "✅ 日志文件存在"
+          echo "日志最后 50 行:"
+          tail -50 build_output.log
+        else
+          echo "❌ 日志文件不存在"
+        fi
+        
+        # 搜索所有 APK 文件
+        echo ""
+        echo "搜索所有 APK 文件..."
+        find . -name "*.apk" -type f 2>/dev/null | while read f; do
+          echo "✅ 找到 APK 文件: $f"
+          ls -la "$f"
+        done
+        
+        # 如果没有找到
+        if [ -z "$(find . -name '*.apk' -type f 2>/dev/null)" ]; then
+          echo "❌ 没有找到任何 APK 文件"
+        fi
 
-    - name: Check for APK files
-      run: |
-        echo "Looking for APK files..."
-        find . -name "*.apk" -type f 2>/dev/null | head -10
-        echo "Checking bin directory..."
-        ls -la bin/ 2>/dev/null || echo "bin directory does not exist"
-
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: android-apk
-        path: bin/*.apk
-        if-no-files-found: ignore
-
-    - name: Upload build log
+    - name: Upload build logs
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: build-log
-        path: build.log
+        name: build-logs
+        path: |
+          ${{ env.BUILD_DIR }}/build_output.log
+          ${{ env.BUILD_DIR }}/.buildozer/*.log
+        if-no-files-found: warn
+        retention-days: 7
+
+    - name: Upload APK if exists
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-apk
+        path: ${{ env.BUILD_DIR }}/*.apk
         if-no-files-found: ignore
+        retention-days: 7
