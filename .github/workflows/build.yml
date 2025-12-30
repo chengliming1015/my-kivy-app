@@ -74,10 +74,7 @@ jobs:
           cat > main.py << 'EOF'
 #!/usr/bin/env python3
 # Android Kivy 应用
-
 import sys
-
-# 导入 Kivy
 try:
     import kivy
     print("Kivy 版本:", kivy.__version__)
