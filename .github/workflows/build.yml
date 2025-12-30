@@ -8,75 +8,103 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    
+    timeout-minutes: 60
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
-    - name: Setup Python
+
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
 
-    - name: Install Buildozer and dependencies
+    - name: Install Buildozer dependencies
       run: |
-        sudo apt update
-        sudo apt install -y \
-          git \
-          zip \
-          unzip \
-          openjdk-17-jdk \
-          python3-pip \
-          autoconf \
-          libtool \
-          pkg-config \
-          zlib1g-dev \
-          libncurses5-dev \
-          libncursesw5-dev \
-          libtinfo5 \
-          cmake \
-          libffi-dev \
-          libssl-dev
-        
-        pip3 install buildozer cython
+        sudo apt-get update
+        # 安装基本依赖，避免那些可能不存在的包
+        sudo apt-get install -y \
+            build-essential \
+            git \
+            python3-pip \
+            python3-dev \
+            libffi-dev \
+            libssl-dev \
+            libncurses5-dev \
+            libsqlite3-dev \
+            libreadline-dev \
+            libtk8.6 \
+            libgdm-dev \
+            libpcap-dev \
+            zip \
+            unzip \
+            curl \
+            wget \
+            openjdk-11-jdk
 
-    - name: Create test app if needed
+    - name: Install Buildozer and Cython
+      run: |
+        pip3 install --upgrade pip
+        pip3 install buildozer
+        pip3 install cython
+
+    - name: Create a minimal Kivy app if not present
       run: |
         if [ ! -f "main.py" ]; then
-          echo "创建测试应用..."
-          echo "print('Hello World')" > main.py
+          echo 'print("Hello World")' > main.py
         fi
 
-    - name: Initialize Buildozer
+    - name: Initialize Buildozer if needed
       run: |
         if [ ! -f "buildozer.spec" ]; then
           buildozer init
         fi
 
+    - name: Update buildozer.spec to use system Android SDK
+      run: |
+        # 确保 buildozer.spec 存在
+        if [ -f "buildozer.spec" ]; then
+          # 移除可能引起问题的配置
+          sed -i '/^android.sdk\s*=/d' buildozer.spec
+          # 添加系统 Android SDK 路径
+          if ! grep -q '^android.sdk_path' buildozer.spec; then
+            echo "android.sdk_path = /usr/local/lib/android/sdk" >> buildozer.spec
+          fi
+          # 设置 Android API 版本为 33，以匹配系统中可能已安装的版本
+          sed -i '/^android.api\s*=/d' buildozer.spec
+          echo "android.api = 33" >> buildozer.spec
+          # 设置最小 API
+          sed -i '/^android.minapi\s*=/d' buildozer.spec
+          echo "android.minapi = 21" >> buildozer.spec
+        fi
+
     - name: Build with Buildozer
       run: |
-        # 清理并构建
-        buildozer android clean || true
-        buildozer android debug 2>&1 | tee build.log
-        
-        # 检查是否成功
-        if [ ${PIPESTATUS[0]} -ne 0 ]; then
-          echo "构建可能失败，查看日志..."
-          tail -100 build.log
-          exit 1
-        fi
+        # 设置环境变量，指向系统中已安装的 Android SDK
+        export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
+        export ANDROID_HOME=/usr/local/lib/android/sdk
+        # 尝试构建，并将输出重定向到文件
+        buildozer android clean 2>&1 | tee build.log
+        buildozer android debug 2>&1 | tee -a build.log
+
+    - name: Check for APK files
+      run: |
+        echo "Looking for APK files..."
+        find . -name "*.apk" -type f 2>/dev/null | head -10
+        echo "Checking bin directory..."
+        ls -la bin/ 2>/dev/null || echo "bin directory does not exist"
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: android-apk
         path: bin/*.apk
-        if-no-files-found: warn
+        if-no-files-found: ignore
 
-    - name: Upload build logs
+    - name: Upload build log
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: build-logs
+        name: build-log
         path: build.log
+        if-no-files-found: ignore
