@@ -11,7 +11,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45  # 增加超时时间
+    timeout-minutes: 45
 
     steps:
     - name: Checkout code
@@ -56,7 +56,6 @@ jobs:
         ANDROID_SDK="/usr/local/lib/android/sdk"
         echo "SDK 路径: $ANDROID_SDK"
         
-        # 检查目录结构
         echo "目录内容:"
         ls -la $ANDROID_SDK/ || echo "SDK 目录不存在"
         
@@ -72,127 +71,80 @@ jobs:
       run: |
         cd ${{ env.BUILD_DIR }}
         
-        # 如果 buildozer.spec 不存在，创建一个简单的
         if [ ! -f "buildozer.spec" ]; then
           echo "创建 buildozer.spec 文件..."
           
-          cat > buildozer.spec << 'EOF'
-[app]
-# 应用标题
-title = My App
-# 包名
-package.name = myapp
-# 包域名
-package.domain = org.test
-# 源代码目录
-source.dir = .
-# 包含的文件类型
-source.include_exts = py,png,jpg,kv,atlas
-# 版本号
-version = 1.0
-# Python 版本
-requirements = python3,kivy==2.1.0
-# 屏幕方向
-orientation = portrait
-# 权限
-android.permissions = INTERNET
-
-# Android 配置
-android.api = 34
-android.minapi = 21
-android.ndk = 27.3.13750724
-android.sdk_path = /usr/local/lib/android/sdk
-
-[buildozer]
-log_level = 2
-EOF
+          # 逐行写入，避免多行字符串问题
+          echo "[app]" > buildozer.spec
+          echo "# 应用标题" >> buildozer.spec
+          echo "title = My App" >> buildozer.spec
+          echo "package.name = myapp" >> buildozer.spec
+          echo "package.domain = org.test" >> buildozer.spec
+          echo "source.dir = ." >> buildozer.spec
+          echo "source.include_exts = py,png,jpg,kv,atlas" >> buildozer.spec
+          echo "version = 1.0" >> buildozer.spec
+          echo "requirements = python3,kivy==2.1.0" >> buildozer.spec
+          echo "orientation = portrait" >> buildozer.spec
+          echo "android.permissions = INTERNET" >> buildozer.spec
+          echo "" >> buildozer.spec
+          echo "# Android 配置" >> buildozer.spec
+          echo "android.api = 34" >> buildozer.spec
+          echo "android.minapi = 21" >> buildozer.spec
+          echo "android.ndk = 27.3.13750724" >> buildozer.spec
+          echo "android.sdk_path = /usr/local/lib/android/sdk" >> buildozer.spec
+          echo "" >> buildozer.spec
+          echo "[buildozer]" >> buildozer.spec
+          echo "log_level = 2" >> buildozer.spec
         else
           echo "使用现有的 buildozer.spec"
           echo "当前配置:"
           cat buildozer.spec
         fi
 
-    - name: Build with Buildozer (step by step)
+    - name: Build with Buildozer
       run: |
         cd ${{ env.BUILD_DIR }}
         
-        # 设置环境变量
         export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
         export ANDROID_HOME=/usr/local/lib/android/sdk
         
-        echo "=== 构建步骤 ==="
+        echo "=== 开始构建 ==="
         
-        # 1. 检查配置
-        echo "1. 检查配置..."
-        buildozer android check 2>&1 || true
-        
-        # 2. 更新依赖
-        echo ""
-        echo "2. 更新依赖..."
-        buildozer android update 2>&1 | tail -50 || true
-        
-        # 3. 清理
-        echo ""
-        echo "3. 清理..."
+        echo "清理..."
         buildozer android clean 2>&1 || true
         
-        # 4. 执行构建
-        echo ""
-        echo "4. 开始构建..."
+        echo "构建 APK..."
         buildozer -v android debug 2>&1 | tee build_output.log
         
-        # 检查构建是否成功
         if [ ${PIPESTATUS[0]} -eq 0 ]; then
           echo "构建成功！"
         else
-          echo "构建可能失败，查看错误..."
+          echo "构建可能失败"
+          echo "错误信息:"
           tail -100 build_output.log
-          exit 1
         fi
 
-    - name: Search for APK files everywhere
+    - name: Search for APK files
       run: |
-        echo "=== 全面搜索 APK 文件 ==="
+        echo "=== 搜索 APK 文件 ==="
         
-        echo "1. 在 bin/ 目录中:"
-        find bin/ -name "*.apk" -type f 2>/dev/null | while read f; do
-          echo "  找到: $f (大小: $(ls -lh "$f" | awk '{print $5}'))"
-        done
-        
-        echo ""
-        echo "2. 在 .buildozer/ 目录中:"
-        find .buildozer/ -name "*.apk" -type f 2>/dev/null | while read f; do
-          echo "  找到: $f (大小: $(ls -lh "$f" | awk '{print $5}'))"
-        done
-        
-        echo ""
-        echo "3. 在整个项目目录中:"
         find . -name "*.apk" -type f 2>/dev/null | while read f; do
-          echo "  找到: $f (大小: $(ls -lh "$f" | awk '{print $5}'))"
+          echo "找到: $f"
+          ls -la "$f"
         done
         
-        echo ""
-        echo "4. 检查常见 Buildozer 输出目录:"
-        echo "  检查 .buildozer/android/platform/build-*/bin/:"
-        find .buildozer/android/platform -name "*.apk" -type f 2>/dev/null | while read f; do
-          echo "    找到: $f"
-        done
-        
-        # 如果没有找到任何 APK
         if [ -z "$(find . -name '*.apk' -type f 2>/dev/null)" ]; then
-          echo "警告: 没有找到任何 APK 文件"
-          echo "构建可能失败了，检查日志..."
+          echo "未找到任何 APK 文件"
+          echo "构建可能失败，检查日志..."
         fi
 
-    - name: Upload any found APK files
-      if: always()
+    - name: Upload APK files
       uses: actions/upload-artifact@v4
       with:
-        name: android-apk-files
+        name: android-apk
         path: |
+          bin/*.apk
           **/*.apk
-          bin/
-          .buildozer/android/platform/build-*/bin/
         if-no-files-found: warn
         retention-days: 7
 
