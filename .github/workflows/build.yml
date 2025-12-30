@@ -74,13 +74,14 @@ jobs:
           cat > main.py << 'EOF'
 #!/usr/bin/env python3
 # Android Kivy 应用
-import sys
+
+# 导入 Kivy
 try:
     import kivy
     print("Kivy 版本:", kivy.__version__)
 except ImportError:
     print("错误: Kivy 未安装")
-    sys.exit(1)
+    raise SystemExit(1)
 
 # 设置 Kivy 版本要求（可选）
 try:
@@ -119,14 +120,13 @@ EOF
         
         echo "测试 Kivy 导入..."
         python -c "
-import sys
 try:
     import kivy
     print('Kivy 导入成功')
     print('Kivy 版本:', kivy.__version__)
 except ImportError as e:
     print('Kivy 导入失败:', e)
-    sys.exit(1)
+    raise SystemExit(1)
         "
 
     - name: Initialize Buildozer
