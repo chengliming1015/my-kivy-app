@@ -134,7 +134,6 @@ jobs:
           python3 << 'EOF'
 import configparser
 import os
-
 config_path = 'buildozer.spec'
 if os.path.exists(config_path):
     config = configparser.ConfigParser()
