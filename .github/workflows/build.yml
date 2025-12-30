@@ -52,16 +52,10 @@ jobs:
       run: |
         cd ${{ env.BUILD_DIR }}
         
-        # 创建一个 Python 脚本，用于生成 main.py
-        echo "开始创建 main.py..."
-        
-        # 方法1：使用 Python 脚本生成
-        cat > create_main.py << 'EOF'
-def create_main_py():
-    content = '''#!/usr/bin/env python3
-import kivy
-kivy.require("2.0.0")
-
+        # 如果 main.py 不存在，创建最简单的版本
+        if [ ! -f "main.py" ]; then
+          echo "创建最简单的 Kivy 应用..."
+          cat > main.py << 'EOF'
 from kivy.app import App
 from kivy.uix.label import Label
 
@@ -71,27 +65,18 @@ class MyApp(App):
 
 if __name__ == "__main__":
     MyApp().run()
-'''
-    with open('main.py', 'w') as f:
-        f.write(content)
-    print("main.py 创建成功")
-
-if __name__ == "__main__":
-    create_main_py()
 EOF
+          echo "✅ main.py 创建完成"
+        fi
         
-        # 运行生成脚本
-        python3 create_main.py
-        
-        echo "✅ main.py 已创建"
-        echo "文件内容:"
-        cat main.py
+        echo "当前目录文件:"
+        ls -la
 
     - name: Test Kivy import
       run: |
         cd ${{ env.BUILD_DIR }}
         echo "测试 Kivy 导入..."
-        python3 -c "import kivy; print('Kivy 导入成功'); print('Kivy 版本:', kivy.__version__)"
+        python3 -c "import kivy; print('Kivy 版本:', kivy.__version__)"
 
     - name: Initialize Buildozer
       run: |
@@ -108,60 +93,36 @@ EOF
         
         echo "配置 buildozer.spec..."
         
-        # 使用最简单的方式配置 buildozer.spec
-        # 先创建基础配置
-        cat > buildozer.spec << 'CONFIG_END'
+        # 创建简化的 buildozer.spec
+        cat > buildozer.spec << 'EOF'
 [app]
 
-# 应用标题
-title = My Kivy App
-
-# 包名
+title = My App
 package.name = myapp
-
-# 包域
-package.domain = org.example
-
-# 源代码目录
+package.domain = org.test
 source.dir = .
-
-# 版本号
 version = 1.0
-
-# 依赖
 requirements = python3,kivy
-
-# 方向
 orientation = portrait
-
-# Android API
 android.api = 33
-
-# 最低 Android API
 android.minapi = 21
-
-# Android NDK 版本
 android.ndk = 25.1.8937393
-
-# 跳过 Android SDK 更新
 android.skip_update = True
-
-# 自动接受 SDK 许可
 android.accept_sdk_license = True
 
 [buildozer]
-
-# 日志级别
 log_level = 2
-
-# 根目录警告
 warn_on_root = 1
-CONFIG_END
-        
-        echo "buildozer.spec 配置完成"
+EOF
 
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
+
+    - name: Pre-accept Android SDK licenses
+      run: |
+        mkdir -p ~/.android
+        echo "8933bad161af4178b1185d1a37fbf41ea5269c55" > ~/.android/licenses/android-sdk-license
+        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> ~/.android/licenses/android-sdk-license
 
     - name: Build APK
       run: |
@@ -169,22 +130,19 @@ CONFIG_END
         
         echo "开始构建 APK..."
         
-        # 清理之前的构建
-        echo "清理构建..."
-        buildozer android clean 2>&1 | tail -5 || true
+        # 清理
+        buildozer android clean 2>&1 | tail -10 || true
         
-        # 构建 APK
-        echo "开始构建 APK..."
+        # 构建
         timeout 1800 buildozer -v android debug 2>&1 | tee build.log
         
         # 检查结果
         if find . -name "*.apk" -type f 2>/dev/null | grep -q .; then
-          echo "✅ APK 构建成功!"
-          echo "找到的 APK 文件:"
+          echo "✅ 构建成功!"
           find . -name "*.apk" -type f -exec ls -lh {} \;
         else
-          echo "❌ APK 构建失败"
-          echo "构建日志最后 100 行:"
+          echo "❌ 构建失败"
+          echo "最后 100 行日志:"
           tail -100 build.log
           exit 1
         fi
@@ -194,7 +152,9 @@ CONFIG_END
       uses: actions/upload-artifact@v4
       with:
         name: android-apk
-        path: ${{ env.BUILD_DIR }}/bin/*.apk
+        path: |
+          ${{ env.BUILD_DIR }}/bin/*.apk
+          ${{ env.BUILD_DIR }}/*.apk
         if-no-files-found: warn
         retention-days: 7
 
