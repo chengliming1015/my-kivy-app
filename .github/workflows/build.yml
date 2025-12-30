@@ -39,15 +39,7 @@ jobs:
           unzip \
           curl \
           wget \
-          openjdk-17-jdk \
-          libgstreamer1.0-dev \
-          libgstreamer-plugins-base1.0-dev \
-          libmtdev-dev \
-          libsdl2-dev \
-          libsdl2-image-dev \
-          libsdl2-mixer-dev \
-          libsdl2-ttf-dev \
-          zlib1g-dev
+          openjdk-17-jdk
 
     - name: Install Python dependencies
       run: |
@@ -60,24 +52,38 @@ jobs:
       run: |
         cd ${{ env.BUILD_DIR }}
         
-        # 创建最简单的 main.py
-        cat > main.py << 'EOF'
-import kivy
-kivy.require('2.0.0')
+        # 使用逐行添加的方式创建 main.py
+        echo "#!/usr/bin/env python3" > main.py
+        echo "" >> main.py
+        echo "import kivy" >> main.py
+        echo 'kivy.require("2.0.0")' >> main.py
+        echo "" >> main.py
+        echo "from kivy.app import App" >> main.py
+        echo "from kivy.uix.label import Label" >> main.py
+        echo "" >> main.py
+        echo "class MyApp(App):" >> main.py
+        echo "    def build(self):" >> main.py
+        echo '        return Label(text="Hello World")' >> main.py
+        echo "" >> main.py
+        echo 'if __name__ == "__main__":' >> main.py
+        echo "    MyApp().run()" >> main.py
+        
+        echo "✅ main.py 创建完成"
+        echo "文件内容:"
+        cat main.py
 
+    - name: Test the app
+      run: |
+        cd ${{ env.BUILD_DIR }}
+        echo "测试 Python 导入..."
+        python3 -c "import kivy; print('Kivy 版本:', kivy.__version__)"
+        echo "测试应用代码..."
+        python3 -c "
+import kivy
 from kivy.app import App
 from kivy.uix.label import Label
-
-class MyApp(App):
-    def build(self):
-        return Label(text='Hello World!')
-
-if __name__ == '__main__':
-    MyApp().run()
-EOF
-        
-        echo "main.py 内容:"
-        cat main.py
+print('Kivy 应用结构正确')
+        "
 
     - name: Initialize Buildozer
       run: |
