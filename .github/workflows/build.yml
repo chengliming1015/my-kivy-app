@@ -1,12 +1,64 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  BUILD_DIR: .
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          git \
+          python3-pip \
+          python3-dev \
+          libffi-dev \
+          libssl-dev \
+          libncurses5-dev \
+          libsqlite3-dev \
+          libreadline-dev \
+          zip \
+          unzip \
+          curl \
+          wget \
+          openjdk-17-jdk
+
+    - name: Install Python dependencies
+      run: |
+        pip install --upgrade pip wheel setuptools
+        pip install cython
+        pip install buildozer
+        pip install kivy
+
     - name: Create simple Kivy app
       run: |
         cd ${{ env.BUILD_DIR }}
         
-        # 创建一个 Python 脚本来生成 main.py
-        cat > create_app.py << '__EOF__'
-# 这个脚本用于生成 main.py
-with open('main.py', 'w') as f:
-    code = '''
+        # 创建一个 Python 脚本，用于生成 main.py
+        echo "开始创建 main.py..."
+        
+        # 方法1：使用 Python 脚本生成
+        cat > create_main.py << 'EOF'
+def create_main_py():
+    content = '''#!/usr/bin/env python3
 import kivy
 kivy.require("2.0.0")
 
@@ -20,14 +72,139 @@ class MyApp(App):
 if __name__ == "__main__":
     MyApp().run()
 '''
-    f.write(code.strip())
+    with open('main.py', 'w') as f:
+        f.write(content)
+    print("main.py 创建成功")
 
-print("main.py created successfully")
-__EOF__
+if __name__ == "__main__":
+    create_main_py()
+EOF
         
-        # 运行脚本创建 main.py
-        python3 create_app.py
+        # 运行生成脚本
+        python3 create_main.py
         
-        # 显示生成的文件
-        echo "生成的 main.py:"
+        echo "✅ main.py 已创建"
+        echo "文件内容:"
         cat main.py
+
+    - name: Test Kivy import
+      run: |
+        cd ${{ env.BUILD_DIR }}
+        echo "测试 Kivy 导入..."
+        python3 -c "import kivy; print('Kivy 导入成功'); print('Kivy 版本:', kivy.__version__)"
+
+    - name: Initialize Buildozer
+      run: |
+        cd ${{ env.BUILD_DIR }}
+        
+        if [ ! -f "buildozer.spec" ]; then
+          echo "初始化 buildozer.spec..."
+          buildozer init
+        fi
+
+    - name: Configure Buildozer
+      run: |
+        cd ${{ env.BUILD_DIR }}
+        
+        echo "配置 buildozer.spec..."
+        
+        # 使用最简单的方式配置 buildozer.spec
+        # 先创建基础配置
+        cat > buildozer.spec << 'CONFIG_END'
+[app]
+
+# 应用标题
+title = My Kivy App
+
+# 包名
+package.name = myapp
+
+# 包域
+package.domain = org.example
+
+# 源代码目录
+source.dir = .
+
+# 版本号
+version = 1.0
+
+# 依赖
+requirements = python3,kivy
+
+# 方向
+orientation = portrait
+
+# Android API
+android.api = 33
+
+# 最低 Android API
+android.minapi = 21
+
+# Android NDK 版本
+android.ndk = 25.1.8937393
+
+# 跳过 Android SDK 更新
+android.skip_update = True
+
+# 自动接受 SDK 许可
+android.accept_sdk_license = True
+
+[buildozer]
+
+# 日志级别
+log_level = 2
+
+# 根目录警告
+warn_on_root = 1
+CONFIG_END
+        
+        echo "buildozer.spec 配置完成"
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Build APK
+      run: |
+        cd ${{ env.BUILD_DIR }}
+        
+        echo "开始构建 APK..."
+        
+        # 清理之前的构建
+        echo "清理构建..."
+        buildozer android clean 2>&1 | tail -5 || true
+        
+        # 构建 APK
+        echo "开始构建 APK..."
+        timeout 1800 buildozer -v android debug 2>&1 | tee build.log
+        
+        # 检查结果
+        if find . -name "*.apk" -type f 2>/dev/null | grep -q .; then
+          echo "✅ APK 构建成功!"
+          echo "找到的 APK 文件:"
+          find . -name "*.apk" -type f -exec ls -lh {} \;
+        else
+          echo "❌ APK 构建失败"
+          echo "构建日志最后 100 行:"
+          tail -100 build.log
+          exit 1
+        fi
+
+    - name: Upload APK
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-apk
+        path: ${{ env.BUILD_DIR }}/bin/*.apk
+        if-no-files-found: warn
+        retention-days: 7
+
+    - name: Upload logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-logs
+        path: |
+          ${{ env.BUILD_DIR }}/build.log
+          ${{ env.BUILD_DIR }}/.buildozer/*.log
+        if-no-files-found: warn
+        retention-days: 7
