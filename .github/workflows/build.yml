@@ -32,14 +32,11 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      # 如果子模块存在，可以取消注释下面一行
-      # with:
-      #   submodules: recursive
 
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'  # Buildozer 需要 Python 3.8 或更高版本
+        python-version: '3.9'
 
     - name: Install Buildozer dependencies
       run: |
@@ -66,12 +63,78 @@ jobs:
       run: |
         pip3 install --upgrade pip
         pip3 install buildozer
-        pip3 install cython  # 可选，但某些项目需要
+        pip3 install cython
+
+    - name: Install Android SDK Build Tools
+      run: |
+        # 设置 Android SDK 环境变量
+        export ANDROID_HOME=$HOME/android-sdk
+        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+        
+        # 创建 Android SDK 目录
+        mkdir -p $ANDROID_HOME/cmdline-tools
+        
+        # 下载命令行工具
+        wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+        unzip commandlinetools-linux-9477386_latest.zip -d $ANDROID_HOME/cmdline-tools
+        mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
+        
+        # 安装 SDK 平台和 build-tools（使用 API 33）
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_HOME \
+            "platform-tools" \
+            "platforms;android-33" \
+            "build-tools;33.0.0"
+        
+        # 验证安装
+        echo "Android SDK installed at: $ANDROID_HOME"
+        find $ANDROID_HOME/build-tools -name "aidl" -type f
+
+    - name: Set up Android SDK for Buildozer
+      run: |
+        export ANDROID_HOME=$HOME/android-sdk
+        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+        
+        # 确保 Buildozer 能找到 Android SDK
+        mkdir -p ~/.buildozer/android/platform
+        ln -sf $ANDROID_HOME ~/.buildozer/android/platform/android-sdk || true
+        
+        # 输出环境变量供后续步骤使用
+        echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        echo "PATH=$PATH" >> $GITHUB_ENV
+
+    - name: Update buildozer.spec if needed
+      run: |
+        # 如果 buildozer.spec 文件存在，检查并更新 android.sdk 配置
+        if [ -f "${{ env.BUILD_DIR }}/buildozer.spec" ]; then
+          # 备份原始文件
+          cp "${{ env.BUILD_DIR }}/buildozer.spec" "${{ env.BUILD_DIR }}/buildozer.spec.backup"
+          
+          # 替换 android.sdk = 为 android.api =
+          sed -i 's/android\.sdk\s*=/android.api =/g' "${{ env.BUILD_DIR }}/buildozer.spec"
+          
+          # 将值更新为 33
+          sed -i 's/android\.api\s*=\s*[0-9]*/android.api = 33/g' "${{ env.BUILD_DIR }}/buildozer.spec"
+          
+          echo "Updated buildozer.spec configuration"
+          grep -i "android\." "${{ env.BUILD_DIR }}/buildozer.spec"
+        else
+          echo "No buildozer.spec file found, will create one"
+          cd ${{ env.BUILD_DIR }}
+          buildozer init
+        fi
 
     - name: Build with Buildozer
       run: |
         cd ${{ env.BUILD_DIR }}
-        buildozer android debug  # 或根据需求改为 release
+        # 设置 Android SDK 路径
+        export ANDROID_HOME=$HOME/android-sdk
+        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+        
+        # 清理之前的构建
+        buildozer android clean || true
+        
+        # 执行构建
+        buildozer android debug
 
     - name: List APK files
       run: |
@@ -82,11 +145,10 @@ jobs:
       with:
         name: android-apk
         path: ${{ env.APK_OUTPUT_DIR }}/*.apk
-        retention-days: 7  # 延长保留时间，便于调试
+        retention-days: 7
 
-    # 可选：上传构建日志
     - name: Upload Build Logs
-      if: always()  # 即使失败也上传日志
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: build-logs
