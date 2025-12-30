@@ -54,18 +54,20 @@ jobs:
         # 确保有一个简单的 Kivy 应用
         if [ ! -f "main.py" ]; then
           echo "创建测试 Kivy 应用..."
-          echo "import kivy" > main.py
-          echo "kivy.require('2.0.0')" >> main.py
-          echo "" >> main.py
-          echo "from kivy.app import App" >> main.py
-          echo "from kivy.uix.label import Label" >> main.py
-          echo "" >> main.py
-          echo "class MyApp(App):" >> main.py
-          echo "    def build(self):" >> main.py
-          echo "        return Label(text='Hello World')" >> main.py
-          echo "" >> main.py
-          echo "if __name__ == '__main__':" >> main.py
-          echo "    MyApp().run()" >> main.py
+          cat > main.py << 'END'
+import kivy
+kivy.require('2.0.0')
+
+from kivy.app import App
+from kivy.uix.label import Label
+
+class MyApp(App):
+    def build(self):
+        return Label(text='Hello World')
+
+if __name__ == '__main__':
+    MyApp().run()
+END
           echo "测试应用创建完成"
         fi
         
@@ -136,6 +138,8 @@ jobs:
         fi
 
     - name: Build with Buildozer
+      id: build
+      continue-on-error: true
       run: |
         cd ${{ env.BUILD_DIR }}
         
@@ -154,28 +158,63 @@ jobs:
         echo "清理之前的构建..."
         buildozer android clean
         
-        # 执行构建
+        # 执行构建并保存日志
         echo "开始构建 APK..."
-        buildozer android debug 2>&1 | tee build_output.log
+        echo "这可能需要几分钟..."
+        
+        # 记录开始时间
+        start_time=$(date +%s)
+        
+        # 运行构建，将输出同时显示和保存到文件
+        buildozer android debug 2>&1 | tee "${{ github.workspace }}/build_output.log"
+        
+        # 记录结束时间和状态
+        end_time=$(date +%s)
+        duration=$((end_time - start_time))
+        echo "构建用时: ${duration}秒"
+        
+        # 保存退出状态
+        exit_code=${PIPESTATUS[0]}
+        echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
+        
+        if [ $exit_code -eq 0 ]; then
+          echo "✅ 构建成功！"
+        else
+          echo "❌ 构建失败，退出码: $exit_code"
+        fi
         
         echo "=== 构建过程结束 ==="
 
     - name: Check build results
+      if: always()
       run: |
         echo "=== 检查构建结果 ==="
         
+        echo "当前目录: $(pwd)"
+        echo "工作空间: ${{ github.workspace }}"
+        
+        # 检查日志文件
+        echo "检查日志文件..."
+        if [ -f "${{ github.workspace }}/build_output.log" ]; then
+          echo "✅ 日志文件存在"
+          echo "日志文件大小: $(wc -l < "${{ github.workspace }}/build_output.log") 行"
+          echo "日志最后 50 行:"
+          tail -50 "${{ github.workspace }}/build_output.log"
+        else
+          echo "❌ 日志文件不存在"
+        fi
+        
         # 搜索所有 APK 文件
+        echo ""
         echo "搜索所有 APK 文件..."
-        find . -name "*.apk" -type f 2>/dev/null | while read f; do
+        find "${{ github.workspace }}" -name "*.apk" -type f 2>/dev/null | while read f; do
           echo "找到 APK 文件: $f"
           ls -la "$f"
         done
         
         # 如果没有找到
-        if [ -z "$(find . -name '*.apk' -type f 2>/dev/null)" ]; then
-          echo "没有找到 APK 文件，构建可能失败。"
-          echo "查看构建日志:"
-          tail -100 build_output.log
+        if [ -z "$(find "${{ github.workspace }}" -name '*.apk' -type f 2>/dev/null)" ]; then
+          echo "没有找到 APK 文件。"
         fi
 
     - name: Upload build logs
@@ -183,7 +222,8 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: build-logs
-        path: ${{ env.BUILD_DIR }}/build_output.log
+        path: ${{ github.workspace }}/build_output.log
+        if-no-files-found: warn
         retention-days: 7
 
     - name: Upload APK if exists
@@ -191,6 +231,6 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: android-apk
-        path: ${{ env.BUILD_DIR }}/*.apk
+        path: ${{ github.workspace }}/*.apk
         if-no-files-found: ignore
         retention-days: 7
