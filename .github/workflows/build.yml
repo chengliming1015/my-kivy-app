@@ -31,7 +31,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4  # 更新到 v4
+      uses: actions/checkout@v4
       # 如果子模块存在，可以取消注释下面一行
       # with:
       #   submodules: recursive
@@ -56,10 +56,11 @@ jobs:
             libreadline-dev \
             libtk8.6 \
             libgdm-dev \
-            libdb4o-cil-dev \
             libpcap-dev \
             zip \
-            unzip
+            unzip \
+            curl \
+            wget
 
     - name: Install Buildozer
       run: |
@@ -77,7 +78,7 @@ jobs:
         ls -la ${{ env.APK_OUTPUT_DIR }}/
 
     - name: Upload APK
-      uses: actions/upload-artifact@v4  # 更新到 v4
+      uses: actions/upload-artifact@v4
       with:
         name: android-apk
         path: ${{ env.APK_OUTPUT_DIR }}/*.apk
@@ -86,7 +87,7 @@ jobs:
     # 可选：上传构建日志
     - name: Upload Build Logs
       if: always()  # 即使失败也上传日志
-      uses: actions/upload-artifact@v4  # 更新到 v4
+      uses: actions/upload-artifact@v4
       with:
         name: build-logs
         path: ${{ env.BUILD_DIR }}/buildozer-*.log
