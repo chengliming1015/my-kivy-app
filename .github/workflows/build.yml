@@ -78,7 +78,7 @@ jobs:
 # 导入 Kivy
 try:
     import kivy
-    print(f"Kivy 版本: {kivy.__version__}")
+    print("Kivy 版本:", kivy.__version__)
 except ImportError:
     print("错误: Kivy 未安装")
     exit(1)
@@ -123,10 +123,10 @@ EOF
 import sys
 try:
     import kivy
-    print('✅ Kivy 导入成功')
-    print(f'Kivy 版本: {kivy.__version__}')
+    print('Kivy 导入成功')
+    print('Kivy 版本:', kivy.__version__)
 except ImportError as e:
-    print('❌ Kivy 导入失败:', e)
+    print('Kivy 导入失败:', e)
     sys.exit(1)
         "
 
@@ -245,10 +245,10 @@ EOF
         
         # 查找 APK 文件
         if find . -name "*.apk" -type f 2>/dev/null | grep -q .; then
-          echo "✅ 找到 APK 文件:"
+          echo "找到 APK 文件:"
           find . -name "*.apk" -type f -exec ls -lh {} \;
         else
-          echo "❌ 未找到 APK 文件"
+          echo "未找到 APK 文件"
           echo "构建日志最后 100 行:"
           tail -100 build.log
           exit 1
