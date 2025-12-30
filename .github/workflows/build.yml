@@ -39,7 +39,8 @@ jobs:
           unzip \
           curl \
           wget \
-          openjdk-17-jdk
+          openjdk-17-jdk \
+          unzip
 
     - name: Install Python dependencies
       run: |
@@ -74,7 +75,6 @@ jobs:
         echo "" >> buildozer.spec
         echo "android.api = 33" >> buildozer.spec
         echo "android.minapi = 21" >> buildozer.spec
-        echo "# 使用已安装的 NDK" >> buildozer.spec
         echo "android.ndk = 25.1.8937393" >> buildozer.spec
         echo "android.skip_update = True" >> buildozer.spec
         echo "android.accept_sdk_license = True" >> buildozer.spec
@@ -85,42 +85,77 @@ jobs:
         
         echo "buildozer.spec 创建完成"
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-      with:
-        ndk-version: '25.1.8937393'
+    - name: Setup Android SDK and NDK manually
+      run: |
+        echo "手动安装 Android SDK 和 NDK..."
+        
+        # 创建目录
+        SDK_DIR="$HOME/android-sdk"
+        mkdir -p $SDK_DIR
+        
+        # 下载命令行工具
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+        unzip -q cmdline-tools.zip -d $SDK_DIR
+        mkdir -p $SDK_DIR/cmdline-tools/latest
+        mv $SDK_DIR/cmdline-tools/* $SDK_DIR/cmdline-tools/latest/
+        
+        # 设置环境变量
+        echo "ANDROID_HOME=$SDK_DIR" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=$SDK_DIR" >> $GITHUB_ENV
+        echo "PATH=$SDK_DIR/cmdline-tools/latest/bin:$SDK_DIR/platform-tools:$PATH" >> $GITHUB_ENV
+        
+        # 接受许可证
+        mkdir -p $SDK_DIR/licenses
+        echo "8933bad161af4178b1185d1a37fbf41ea5269c55" > $SDK_DIR/licenses/android-sdk-license
+        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> $SDK_DIR/licenses/android-sdk-license
+        echo "84831b9409646a918e30573b4ad6d4e4e2fae60e" >> $SDK_DIR/licenses/android-sdk-license
+        
+        # 安装必要组件
+        echo "y" | $SDK_DIR/cmdline-tools/latest/bin/sdkmanager --licenses
+        $SDK_DIR/cmdline-tools/latest/bin/sdkmanager \
+          "platform-tools" \
+          "platforms;android-33" \
+          "build-tools;33.0.0"
+        
+        # 下载并安装特定版本的 NDK
+        NDK_VERSION="25.1.8937393"
+        NDK_URL="https://dl.google.com/android/repository/android-ndk-r${NDK_VERSION%%.*}-${NDK_VERSION#*.*.*.}-linux.zip"
+        echo "下载 NDK: $NDK_URL"
+        wget -q $NDK_URL -O android-ndk.zip
+        unzip -q android-ndk.zip -d $SDK_DIR
+        mv $SDK_DIR/android-ndk-r${NDK_VERSION%%.*}-${NDK_VERSION#*.*.*.} $SDK_DIR/ndk/$NDK_VERSION
+        
+        echo "Android SDK 和 NDK 安装完成"
+        echo "ANDROID_HOME: $ANDROID_HOME"
+        echo "NDK 路径: $ANDROID_HOME/ndk/$NDK_VERSION"
 
     - name: Build APK
       run: |
         cd ${{ env.BUILD_DIR }}
         
         echo "设置环境变量..."
-        # 设置环境变量，让 Buildozer 使用已安装的 SDK/NDK
-        export ANDROID_HOME="/usr/local/lib/android/sdk"
-        export ANDROID_SDK_ROOT="/usr/local/lib/android/sdk"
-        export ANDROID_NDK_HOME="/usr/local/lib/android/sdk/ndk/25.1.8937393"
-        export ANDROID_NDK_ROOT="/usr/local/lib/android/sdk/ndk/25.1.8937393"
+        # 设置环境变量
+        export ANDROID_HOME="$HOME/android-sdk"
+        export ANDROID_SDK_ROOT="$HOME/android-sdk"
+        export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/25.1.8937393"
+        export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/25.1.8937393"
         
+        echo "检查安装..."
         echo "ANDROID_HOME: $ANDROID_HOME"
         echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
+        ls -la $ANDROID_HOME/
         
-        # 检查 NDK 是否已安装
-        if [ -d "$ANDROID_NDK_HOME" ]; then
-          echo "✅ Android NDK 已安装: $ANDROID_NDK_HOME"
-        else
-          echo "❌ Android NDK 未找到"
-          echo "可用 NDK 版本:"
-          find /usr/local/lib/android/sdk/ndk -type d 2>/dev/null || echo "未找到 NDK 目录"
-          exit 1
-        fi
+        # 告诉 Buildozer 使用已安装的 SDK 和 NDK
+        echo "android.ndk_path = $ANDROID_NDK_HOME" >> buildozer.spec
+        echo "android.sdk_path = $ANDROID_HOME" >> buildozer.spec
         
         echo "开始构建 APK..."
         
         # 清理
         buildozer android clean 2>&1 | tail -10 || true
         
-        # 构建 - 添加 -d 参数显示调试信息
-        timeout 1800 buildozer -d -v android debug 2>&1 | tee build.log
+        # 构建
+        timeout 2400 buildozer -v android debug 2>&1 | tee build.log
         
         # 检查结果
         if find . -name "*.apk" -type f 2>/dev/null | grep -q .; then
@@ -128,8 +163,8 @@ jobs:
           find . -name "*.apk" -type f -exec ls -lh {} \;
         else
           echo "❌ 构建失败"
-          echo "最后 100 行日志:"
-          tail -100 build.log
+          echo "最后 200 行日志:"
+          tail -200 build.log
           exit 1
         fi
 
