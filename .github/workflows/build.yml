@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 env:
@@ -14,171 +14,160 @@ jobs:
     timeout-minutes: 60
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
 
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          build-essential \
-          git \
-          python3-pip \
-          python3-dev \
-          libffi-dev \
-          libssl-dev \
-          libncurses5-dev \
-          libsqlite3-dev \
-          libreadline-dev \
-          zip \
-          unzip \
-          curl \
-          wget \
-          openjdk-17-jdk \
-          libgstreamer1.0-0 \
-          gstreamer1.0-plugins-base \
-          gstreamer1.0-plugins-good \
-          pkg-config \
-          autoconf \
-          automake \
-          libtool
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            git \
+            python3-pip \
+            python3-dev \
+            libffi-dev \
+            libssl-dev \
+            libncurses5-dev \
+            libsqlite3-dev \
+            libreadline-dev \
+            zip \
+            unzip \
+            curl \
+            wget \
+            openjdk-17-jdk \
+            libgstreamer1.0-0 \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good
 
-    - name: Install Python dependencies
-      run: |
-        pip install --upgrade pip wheel setuptools
-        pip install cython==0.29.33
-        pip install buildozer
-        pip install kivy
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install cython==0.29.33
+          pip install buildozer
+          pip install kivy
 
-    - name: Check if main.py exists
-      run: |
-        cd ${{ env.BUILD_DIR }}
-        if [ ! -f "main.py" ]; then
-          echo "错误: main.py 文件不存在"
-          exit 1
-        fi
+      - name: Check if main.py exists
+        run: |
+          cd ${{ env.BUILD_DIR }}
+          if [ ! -f "main.py" ]; then
+            echo "错误: main.py 文件不存在"
+            exit 1
+          fi
 
-    - name: Create buildozer.spec
-      run: |
-        cd ${{ env.BUILD_DIR }}
-        
-        # 创建基本的 buildozer.spec 文件
-        cat > buildozer.spec << 'EOF'
-[app]
-title = MyApp
-package.name = myapp
-package.domain = org.test
-source.dir = .
-version = 1.0
-requirements = python3,kivy
-orientation = portrait
+      - name: Create buildozer.spec
+        run: |
+          cd ${{ env.BUILD_DIR }}
+          
+          # 使用 echo 创建简单的 buildozer.spec
+          echo "[app]" > buildozer.spec
+          echo "title = MyApp" >> buildozer.spec
+          echo "package.name = myapp" >> buildozer.spec
+          echo "package.domain = org.test" >> buildozer.spec
+          echo "source.dir = ." >> buildozer.spec
+          echo "source.include_exts = py,png,jpg,kv,atlas" >> buildozer.spec
+          echo "version = 1.0" >> buildozer.spec
+          echo "requirements = python3,kivy" >> buildozer.spec
+          echo "orientation = portrait" >> buildozer.spec
+          echo "" >> buildozer.spec
+          echo "# Android specific" >> buildozer.spec
+          echo "android.api = 33" >> buildozer.spec
+          echo "android.minapi = 21" >> buildozer.spec
+          echo "android.sdk = 33" >> buildozer.spec
+          echo "android.ndk = 25.1.8937393" >> buildozer.spec
+          echo "android.skip_update = True" >> buildozer.spec
+          echo "android.accept_sdk_license = True" >> buildozer.spec
+          echo "android.arch = arm64-v8a" >> buildozer.spec
+          echo "" >> buildozer.spec
+          echo "[buildozer]" >> buildozer.spec
+          echo "log_level = 2" >> buildozer.spec
+          echo "warn_on_root = 1" >> buildozer.spec
 
-android.api = 33
-android.minapi = 21
-android.ndk = 25.1.8937393
-android.sdk = 33
-android.skip_update = True
-android.accept_sdk_license = True
-android.arch = arm64-v8a
+      - name: Setup Android SDK
+        run: |
+          # 创建目录
+          SDK_DIR="$HOME/android-sdk"
+          mkdir -p $SDK_DIR
+          
+          # 下载命令行工具
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+          unzip -q cmdline-tools.zip -d $SDK_DIR
+          mkdir -p $SDK_DIR/cmdline-tools/latest
+          mv $SDK_DIR/cmdline-tools/* $SDK_DIR/cmdline-tools/latest/
+          
+          # 设置环境变量
+          echo "ANDROID_SDK_ROOT=$SDK_DIR" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$SDK_DIR" >> $GITHUB_ENV
+          
+          # 接受许可证
+          mkdir -p $SDK_DIR/licenses
+          echo "8933bad161af4178b1185d1a37fbf41ea5269c55" > $SDK_DIR/licenses/android-sdk-license
+          echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> $SDK_DIR/licenses/android-sdk-license
+          
+          # 安装组件
+          yes | $SDK_DIR/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1
+          $SDK_DIR/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.0"
 
-[buildozer]
-log_level = 2
-warn_on_root = 1
-EOF
-        
-        echo "buildozer.spec 创建完成"
+      - name: Prepare for build
+        run: |
+          cd ${{ env.BUILD_DIR }}
+          
+          # 设置环境变量
+          export ANDROID_SDK_ROOT="$HOME/android-sdk"
+          export ANDROID_HOME="$HOME/android-sdk"
+          
+          # 更新 buildozer.spec 中的路径
+          echo "android.sdk_path = $ANDROID_SDK_ROOT" >> buildozer.spec
+          
+          echo "=== 配置检查 ==="
+          echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
+          cat buildozer.spec
 
-    - name: Setup Android SDK and NDK
-      run: |
-        echo "安装 Android SDK 和 NDK..."
-        
-        # 创建目录
-        SDK_DIR="$HOME/android-sdk"
-        mkdir -p $SDK_DIR
-        
-        # 下载命令行工具
-        wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
-        unzip -q cmdline-tools.zip -d $SDK_DIR
-        mkdir -p $SDK_DIR/cmdline-tools/latest
-        mv $SDK_DIR/cmdline-tools/* $SDK_DIR/cmdline-tools/latest/
-        
-        # 设置环境变量
-        echo "ANDROID_HOME=$SDK_DIR" >> $GITHUB_ENV
-        echo "ANDROID_SDK_ROOT=$SDK_DIR" >> $GITHUB_ENV
-        echo "PATH=$SDK_DIR/cmdline-tools/latest/bin:$SDK_DIR/platform-tools:$PATH" >> $GITHUB_ENV
-        
-        # 接受许可证
-        mkdir -p $SDK_DIR/licenses
-        echo -e "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n84831b9409646a918e30573b4ad6d4e4e2fae60e" > $SDK_DIR/licenses/android-sdk-license
-        
-        # 安装必要组件
-        yes | $SDK_DIR/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1
-        $SDK_DIR/cmdline-tools/latest/bin/sdkmanager \
-          "platform-tools" \
-          "platforms;android-33" \
-          "build-tools;33.0.0" \
-          "ndk;25.1.8937393"
+      - name: Build APK
+        run: |
+          cd ${{ env.BUILD_DIR }}
+          
+          # 设置环境变量
+          export ANDROID_SDK_ROOT="$HOME/android-sdk"
+          export ANDROID_HOME="$HOME/android-sdk"
+          
+          echo "开始构建..."
+          
+          # 清理并构建
+          buildozer android clean || true
+          
+          # 构建，设置超时
+          timeout 1800 buildozer -v android debug 2>&1 | tee build.log
+          
+          # 检查结果
+          if find bin -name "*.apk" 2>/dev/null | grep -q .; then
+            echo "✅ 构建成功！"
+            ls -lh bin/*.apk
+          else
+            echo "❌ 构建失败"
+            echo "=== 最后100行日志 ==="
+            tail -100 build.log
+            exit 1
+          fi
 
-    - name: Build APK
-      run: |
-        cd ${{ env.BUILD_DIR }}
-        
-        echo "开始构建 APK..."
-        
-        # 设置环境变量
-        export ANDROID_HOME="$HOME/android-sdk"
-        export ANDROID_SDK_ROOT="$HOME/android-sdk"
-        
-        # 更新 buildozer.spec 中的路径
-        if grep -q "android.ndk_path" buildozer.spec; then
-          sed -i "s|android.ndk_path =.*|android.ndk_path = $ANDROID_HOME/ndk/25.1.8937393|" buildozer.spec
-        else
-          echo "android.ndk_path = $ANDROID_HOME/ndk/25.1.8937393" >> buildozer.spec
-        fi
-        
-        if grep -q "android.sdk_path" buildozer.spec; then
-          sed -i "s|android.sdk_path =.*|android.sdk_path = $ANDROID_HOME|" buildozer.spec
-        else
-          echo "android.sdk_path = $ANDROID_HOME" >> buildozer.spec
-        fi
-        
-        # 构建 APK
-        timeout 3600 buildozer -v android debug 2>&1 | tee build.log
-        
-        # 检查构建结果
-        if [ -f "bin/*.apk" ] || find . -name "*.apk" | grep -q .; then
-          echo "✅ 构建成功!"
-          mkdir -p bin
-          find . -name "*.apk" -exec cp {} bin/ \;
-          ls -la bin/
-        else
-          echo "❌ 构建失败"
-          echo "最后 200 行日志:"
-          tail -200 build.log
-          exit 1
-        fi
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: ${{ env.BUILD_DIR }}/bin/*.apk
+          if-no-files-found: warn
+          retention-days: 7
 
-    - name: Upload APK
-      if: success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: android-apk
-        path: ${{ env.BUILD_DIR }}/bin/*.apk
-        if-no-files-found: warn
-        retention-days: 7
-
-    - name: Upload logs
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-logs
-        path: |
-          ${{ env.BUILD_DIR }}/build.log
-          ${{ env.BUILD_DIR }}/.buildozer/**/*.log
-        if-no-files-found: warn
-        retention-days: 7
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: ${{ env.BUILD_DIR }}/build.log
+          if-no-files-found: warn
+          retention-days: 7
