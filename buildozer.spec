@@ -24,9 +24,11 @@ icon.filename = icon.png
 android.permissions = INTERNET
 
 # Android 配置
-android.api = 30
+android.api = 33
 android.minapi = 21
-android.ndk = 23b
+android.sdk = 24
+android.ndk = 25b
+android.accept_sdk_license = True
 
 
 [buildozer]
