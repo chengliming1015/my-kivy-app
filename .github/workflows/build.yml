@@ -70,11 +70,20 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
           echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
 
+          # ========== 新增3行核心配置（解决文件读取错误、NDK识别问题） ==========
+          # 1. 赋予Buildozer目录最高权限，避免权限不足导致文件提前关闭
+          chmod -R 777 /home/runner/.buildozer
+          # 2. 禁用Buildozer缓存，强制使用手动指定的NDK，避免缓存冲突
+          export BUILDOZER_NO_CACHE=1
+          # 3. 指定NDK根目录，让Buildozer直接识别，无需自动查找
+          echo "ANDROID_NDK_ROOT=/home/runner/.buildozer/android/platform/android-ndk-r25c" >> $GITHUB_ENV
+
       # 步骤4：安装Python依赖（Buildozer + Kivy，打包必备）
       - name: Install Python Dependencies
         run: |
           python3 -m pip install --upgrade pip
-          pip3 install --user buildozer
+          # 修改：指定Buildozer 1.4.0稳定版，兼容NDK r25c，解决文件读取异常
+          python3 -m pip install --user --upgrade buildozer==1.4.0
 
       # 步骤5：接受Android许可证（修复Broken pipe，确保打包顺利）
       - name: Accept Android Licenses
@@ -89,8 +98,8 @@ jobs:
         run: |
           ANDROID_HOME="/home/runner/.buildozer/android/platform/android-sdk"
           "$ANDROID_HOME/tools/bin/sdkmanager" --update
-          "$ANDROID_HOME/tools/bin/sdkmanager" "platforms;android-31" "build-tools;29.0.3" "platform-tools" "ndk;25.2.9519653" > /dev/null 2>&1
-
+          # 修改：删除 "ndk;25.2.9519653"，避免和手动下载的NDK冲突覆盖
+          "$ANDROID_HOME/tools/bin/sdkmanager" "platforms;android-31" "build-tools;29.0.3" "platform-tools" > /dev/null 2>&1
 
       # 步骤7：执行Buildozer打包（生成Android APK文件）
       - name: Build Android APK with Buildozer
