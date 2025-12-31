@@ -1,196 +1,103 @@
-name: Build Android APK
+name: Kivy Build Android APK
 
 on:
   push:
     branches: [ main ]
-    paths-ignore:             # 忽略文档等非代码文件的更改
-      - '**/*.md'
-      - '**/*.txt'
-      - '**/*.rst'
-  pull_request:
-    branches: [ main ]
-    paths-ignore:
-      - '**/*.md'
-      - '**/*.txt'
-      - '**/*.rst'
-
-  # 允许手动触发
-  workflow_dispatch:
-
-# 设置环境变量，方便后续步骤使用
-env:
-  APK_OUTPUT_DIR: bin
-  BUILD_DIR: .
+  workflow_dispatch: # 手动触发构建，方便测试
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    # 设置超时时间，避免无限运行
-    timeout-minutes: 30
+  build-apk:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      # 步骤1：拉取远程仓库代码
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
+      # 步骤2：安装系统级依赖（适配Ubuntu 22.04，打包必备）
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            software-properties-common apt-transport-https ca-certificates \
+            git python3-pip python3-dev python3-distutils python3-setuptools \
+            build-essential cython3 libgl1-mesa-dev libgles2-mesa-dev pkg-config \
+            autoconf automake libtool cmake openjdk-17-jdk aidl coreutils util-linux \
+            android-sdk-platform-tools unzip wget
 
-    - name: Install Buildozer dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-            build-essential \
-            git \
-            python3-pip \
-            python3-dev \
-            libffi-dev \
-            libssl-dev \
-            libncurses5-dev \
-            libsqlite3-dev \
-            libreadline-dev \
-            libtk8.6 \
-            libgdm-dev \
-            libpcap-dev \
-            zip \
-            unzip \
-            curl \
-            wget
+      # 步骤3：配置打包环境（路径、权限、AIDL兜底，避免工具找不到）
+      - name: Configure Buildozer Environment
+        run: |
+          # 定义核心工作路径（用户权限目录，避免权限报错）
+          USER_BIN="/home/runner/.local/bin"
+          ANDROID_HOME="/home/runner/.buildozer/android/platform/android-sdk"
+          BUILD_TOOLS_PATH="/home/runner/.buildozer/android/platform/android-sdk/build-tools/29.0.3"
+          CMDLINE_TOOLS_PATH="/home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest"
 
-    - name: Install Buildozer
-      run: |
-        pip3 install --upgrade pip
-        pip3 install buildozer
-        pip3 install cython
+          # 创建所需目录（确保目录存在，避免文件找不到）
+          mkdir -p "$USER_BIN"
+          mkdir -p "$BUILD_TOOLS_PATH"
+          mkdir -p "$CMDLINE_TOOLS_PATH"
+          mkdir -p "$ANDROID_HOME/platform-tools"
+          mkdir -p "$ANDROID_HOME/tools/bin"
 
-    - name: Install Android SDK Build Tools
-      run: |
-        # 设置 Android SDK 环境变量
-        export ANDROID_HOME=$HOME/android-sdk
-        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
-        
-        # 创建 Android SDK 目录
-        mkdir -p $ANDROID_HOME/cmdline-tools
-        
-        # 下载命令行工具
-        wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
-        unzip commandlinetools-linux-9477386_latest.zip -d $ANDROID_HOME/cmdline-tools
-        mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
-        
-        # 安装 SDK 平台和 build-tools（根据您的 android.api = 30 安装对应的版本）
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_HOME \
-            "platform-tools" \
-            "platforms;android-30" \
-            "build-tools;30.0.3"
-        
-        # 验证安装
-        echo "Android SDK installed at: $ANDROID_HOME"
-        find $ANDROID_HOME/build-tools -name "aidl" -type f
+          # 配置Cython软链接（Buildozer依赖，确保可调用）
+          ln -s /usr/bin/cython3 "$USER_BIN/cython"
 
-    - name: Set up Android SDK for Buildozer
-      run: |
-        export ANDROID_HOME=$HOME/android-sdk
-        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
-        
-        # 确保 Buildozer 能找到 Android SDK
-        mkdir -p ~/.buildozer/android/platform
-        ln -sf $ANDROID_HOME ~/.buildozer/android/platform/android-sdk || true
-        
-        # 输出环境变量供后续步骤使用
-        echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
-        echo "PATH=$PATH" >> $GITHUB_ENV
+          # 下载并配置Android Cmdline Tools（安卓打包核心工具）
+          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+          unzip -q cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools/"
+          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools/"* "$CMDLINE_TOOLS_PATH/"
+          rm -rf "$ANDROID_HOME/cmdline-tools/cmdline-tools"
 
-    - name: Debug buildozer.spec
-      run: |
-        cd ${{ env.BUILD_DIR }}
-        echo "=== 检查 buildozer.spec 文件 ==="
-        if [ -f "buildozer.spec" ]; then
-          echo "文件存在"
-          echo "=== 完整内容 ==="
-          cat buildozer.spec
-          echo "=== 检查 [app] 部分 ==="
-          sed -n '/^\[app\]/,/^\[/p' buildozer.spec
-          echo "=== 检查 android 相关配置 ==="
-          grep -n "android\." buildozer.spec
-        else
-          echo "buildozer.spec 文件不存在"
-          buildozer init
-        fi
+          # 配置sdkmanager软链接（确保安卓许可证可正常接受）
+          ln -s "$CMDLINE_TOOLS_PATH/bin/sdkmanager" "$ANDROID_HOME/tools/bin/sdkmanager"
+          chmod +x "$ANDROID_HOME/tools/bin/sdkmanager"
 
-    - name: Fix duplicate android.api in buildozer.spec
-      run: |
-        cd ${{ env.BUILD_DIR }}
-        if [ -f "buildozer.spec" ]; then
-          echo "修复 buildozer.spec 中的重复配置..."
-          # 备份原始文件
-          cp buildozer.spec buildozer.spec.backup
-          
-          # 方法1：直接删除 android.sdk 行
-          sed -i '/^android\.sdk\s*=/d' buildozer.spec
-          
-          # 方法2：或者使用更安全的Python脚本
-          python3 << 'EOF'
-import configparser
-import os
+          # 配置AIDL多路径兜底（避免Buildozer找不到AIDL工具）
+          cp /usr/bin/aidl "$BUILD_TOOLS_PATH/aidl"
+          cp /usr/bin/aidl "$ANDROID_HOME/platform-tools/aidl"
+          chmod +x "$BUILD_TOOLS_PATH/aidl"
+          chmod +x "$ANDROID_HOME/platform-tools/aidl"
 
-config_path = 'buildozer.spec'
-if os.path.exists(config_path):
-    config = configparser.ConfigParser()
-    config.read(config_path)
-    
-    if 'app' in config:
-        # 移除 android.sdk
-        if 'android.sdk' in config['app']:
-            config['app'].pop('android.sdk')
-            print("已移除 android.sdk")
-        
-        # 确保 android.api 存在
-        if 'android.api' not in config['app']:
-            config['app']['android.api'] = '30'
-            print("已添加 android.api = 30")
-        else:
-            print(f"android.api = {config['app']['android.api']}")
-    
-    # 写回文件
-    with open(config_path, 'w') as f:
-        config.write(f)
-    print("修复完成")
-EOF
-          
-          echo "修复后的 android 配置："
-          grep -n "android\." buildozer.spec
-        fi
+          # 配置环境变量（确保所有工具可全局调用）
+          echo "PATH=$USER_BIN:$PATH" >> $GITHUB_ENV
+          echo "PATH=$CMDLINE_TOOLS_PATH/bin:$PATH" >> $GITHUB_ENV
+          echo "PATH=$BUILD_TOOLS_PATH:$PATH" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
 
-    - name: Build with Buildozer
-      run: |
-        cd ${{ env.BUILD_DIR }}
-        # 设置 Android SDK 路径
-        export ANDROID_HOME=$HOME/android-sdk
-        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
-        
-        # 清理之前的构建
-        buildozer android clean || true
-        
-        # 执行构建（添加详细日志）
-        buildozer -v android debug
+      # 步骤4：安装Python依赖（Buildozer + Kivy，打包必备）
+      - name: Install Python Dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip3 install --user buildozer
 
-    - name: List APK files
-      run: |
-        ls -la ${{ env.APK_OUTPUT_DIR }}/
+      # 步骤5：接受Android许可证（修复Broken pipe，确保打包顺利）
+      - name: Accept Android Licenses
+        run: |
+          ANDROID_HOME="/home/runner/.buildozer/android/platform/android-sdk"
+          chmod +x "$ANDROID_HOME/tools/bin/sdkmanager"
+          # 用echo替代yes，解决管道时序差异导致的Broken pipe报错
+          echo -e "y\ny\ny\ny\ny\ny\ny\ny" | "$ANDROID_HOME/tools/bin/sdkmanager" --licenses
 
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: android-apk
-        path: ${{ env.APK_OUTPUT_DIR }}/*.apk
-        retention-days: 7
+      # 步骤6：安装Android核心组件（API 31 + Build Tools 29.0.3，兼容Kivy）
+      - name: Install Android Components
+        run: |
+          ANDROID_HOME="/home/runner/.buildozer/android/platform/android-sdk"
+          "$ANDROID_HOME/tools/bin/sdkmanager" "platforms;android-31" "build-tools;29.0.3" "platform-tools" > /dev/null 2>&1
 
-    - name: Upload Build Logs
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-logs
-        path: ${{ env.BUILD_DIR }}/buildozer-*.log
-        retention-days: 7
+      # 步骤7：执行Buildozer打包（生成Android APK文件）
+      - name: Build Android APK with Buildozer
+        run: |
+          buildozer -v android debug
+
+      # 步骤8：上传APK产物（方便下载到本地安装）
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kivy-HappyNewYear2026-APK
+          path: ./bin/*.apk
+          retention-days: 7
