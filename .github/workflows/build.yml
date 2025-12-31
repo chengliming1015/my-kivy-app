@@ -125,10 +125,11 @@ jobs:
           # 不下载NDK，避免和手动下载的冲突
           "$ANDROID_HOME/tools/bin/sdkmanager" "platforms;android-31" "build-tools;29.0.3" "platform-tools" > /dev/null 2>&1
 
-      # 步骤7：执行Buildozer打包（指定手动创建的spec文件，禁用自动下载）
+      # 步骤7：执行Buildozer打包（删除无效参数，使用默认加载逻辑）
       - name: Build Android APK with Buildozer
         run: |
-          buildozer -v --spec ./buildozer.spec android debug --disable-automatic-ndk --disable-automatic-sdk
+          # 简化命令：Buildozer 1.4.0自动加载当前目录下的buildozer.spec，无需额外参数
+          buildozer -v android debug
 
       # 步骤8：上传APK产物（方便下载到本地安装）
       - name: Upload APK Artifact
