@@ -40,14 +40,21 @@ jobs:
           curl \
           wget \
           openjdk-17-jdk \
-          unzip
+          unzip \
+          libgstreamer1.0-0 \
+          gstreamer1.0-plugins-base \
+          gstreamer1.0-plugins-good \
+          pkg-config \
+          autoconf \
+          automake \
+          libtool
 
     - name: Install Python dependencies
       run: |
         pip install --upgrade pip wheel setuptools
-        pip install cython
+        pip install cython==0.29.33
         pip install buildozer
-        pip install kivy
+        pip install kivy[full]
 
     - name: Check if main.py exists
       run: |
@@ -58,32 +65,342 @@ jobs:
           exit 1
         fi
 
-    - name: Create buildozer.spec using echo
+    - name: Create buildozer.spec
       run: |
         cd ${{ env.BUILD_DIR }}
         
-        # 使用 echo 逐行创建 buildozer.spec
-        echo "[app]" > buildozer.spec
-        echo "" >> buildozer.spec
-        echo "title = My App" >> buildozer.spec
-        echo "package.name = myapp" >> buildozer.spec
-        echo "package.domain = org.test" >> buildozer.spec
-        echo "source.dir = ." >> buildozer.spec
-        echo "version = 1.0" >> buildozer.spec
-        echo "requirements = python3,kivy" >> buildozer.spec
-        echo "orientation = portrait" >> buildozer.spec
-        echo "" >> buildozer.spec
-        echo "android.api = 33" >> buildozer.spec
-        echo "android.minapi = 21" >> buildozer.spec
-        echo "android.ndk = 25.1.8937393" >> buildozer.spec
-        echo "android.skip_update = True" >> buildozer.spec
-        echo "android.accept_sdk_license = True" >> buildozer.spec
-        echo "" >> buildozer.spec
-        echo "[buildozer]" >> buildozer.spec
-        echo "log_level = 2" >> buildozer.spec
-        echo "warn_on_root = 1" >> buildozer.spec
+        # 检查是否已有 buildozer.spec，如有则备份
+        if [ -f "buildozer.spec" ]; then
+          echo "备份现有的 buildozer.spec"
+          cp buildozer.spec buildozer.spec.backup
+        fi
+        
+        # 使用 heredoc 创建完整的 buildozer.spec
+        cat > buildozer.spec << 'EOF'
+[app]
+
+# (str) Title of your application
+title = My Kivy App
+
+# (str) Package name
+package.name = myapp
+
+# (str) Package domain (needed for android/ios packaging)
+package.domain = org.test
+
+# (str) Source code where the main.py live
+source.dir = .
+
+# (list) Source files to include (let empty to include all the files)
+source.include_exts = py,png,jpg,kv,atlas,ttf,json
+
+# (list) List of inclusions using pattern matching
+#source.include_patterns = assets/*,images/*.png
+
+# (list) Source files to exclude (let empty to not exclude anything)
+#source.exclude_exts = spec
+
+# (list) List of directory to exclude (let empty to not exclude anything)
+#source.exclude_dirs = tests, bin, venv
+
+# (list) List of exclusions using pattern matching
+#source.exclude_patterns = license,images/*/*.jpg
+
+# (str) Application versioning (method 1)
+version = 1.0
+
+# (list) Application requirements
+# comma separated e.g. requirements = sqlite3,kivy
+requirements = python3,kivy
+
+# (str) Custom source folders for requirements
+# Sets custom source for any requirements with recipes
+# requirements.source.kivy = ../../kivy
+
+# (list) Garden requirements
+#garden_requirements =
+
+# (str) Presplash of the application
+#presplash.filename = %(source.dir)s/data/presplash.png
+
+# (str) Icon of the application
+#icon.filename = %(source.dir)s/data/icon.png
+
+# (str) Supported orientation (one of landscape, sensorLandscape, portrait or all)
+orientation = portrait
+
+# (list) List of service to declare
+#services = NAME:ENTRYPOINT_TO_PY,NAME2:ENTRYPOINT2_TO_PY
+
+#
+# OSX Specific
+#
+
+#
+# author = © Copyright Info
+
+# change the major version of python used by the app
+osx.python_version = 3
+
+# Kivy version to use
+osx.kivy_version = 2.1.0
+
+#
+# Android specific
+#
+
+# (bool) Indicate if the application should be fullscreen or not
+fullscreen = 0
+
+# (string) Presplash background color (for android toolchain)
+# Supported formats are: #RRGGBB #AARRGGBB or one of the following names:
+# red, blue, green, black, white, gray, cyan, magenta, yellow, lightgray,
+# darkgray, grey, lightgrey, darkgrey, aqua, fuchsia, lime, maroon, navy,
+# olive, purple, silver, teal.
+#android.presplash_color = #FFFFFF
+
+# (str) Adaptive icon of the application (used if Android API level is 26+ at runtime)
+#icon.adaptive_foreground.filename = %(source.dir)s/data/icon_fg.png
+#icon.adaptive_background.filename = %(source.dir)s/data/icon_bg.png
+
+# (list) Permissions
+#android.permissions = INTERNET
+
+# (list) features (adds uses-feature -tags to manifest)
+#android.features = android.hardware.usb.host
+
+# (int) Target Android API, should be as high as possible.
+android.api = 33
+
+# (int) Minimum API your APK will support.
+android.minapi = 21
+
+# (int) Android SDK version to use
+android.sdk = 33
+
+# (str) Android NDK version to use
+android.ndk = 25.1.8937393
+
+# (bool) Use --private data storage (True) or --dir public storage (False)
+#android.private_storage = True
+
+# (str) Android NDK directory (if empty, it will be automatically downloaded.)
+#android.ndk_path =
+
+# (str) Android SDK directory (if empty, it will be automatically downloaded.)
+#android.sdk_path =
+
+# (str) ANT directory (if empty, it will be automatically downloaded.)
+#android.ant_path =
+
+# (bool) If True, then skip trying to update the Android sdk
+# This can be useful to avoid excess Internet downloads or save time
+# when an update is due and you just want to test/build your package
+android.skip_update = True
+
+# (bool) If True, then automatically accept SDK license
+android.accept_sdk_license = True
+
+# (str) Android entry point, default is ok for Kivy-based app
+#android.entrypoint = org.renpy.android.PythonActivity
+
+# (list) List of Java .jar files to add to the libs so that pyjnius can access
+# their classes. Don't add jars that you do not need, since extra jars can slow
+# down the build process. Allows wildcards matching, for example:
+# OUYA-ODK/libs/*.jar
+#android.add_jars = foo.jar,bar.jar
+
+# (list) List of Java files to add to the android project (can be python or
+# java files)
+#android.add_src =
+
+# (list) Android AAR archives to add (currently works only with sdl2_gradle
+# bootstrap)
+#android.add_aars =
+
+# (list) Gradle dependencies to add (currently works only with sdl2_gradle
+# bootstrap)
+#android.gradle_dependencies =
+
+# (bool) Enable AndroidX support. Enable when 'android.gradle_dependencies'
+# contains an 'androidx' package, or any package from Kotlin source.
+# android.enable_androidx requires android.api >= 28
+#android.enable_androidx = True
+
+# (list) add compile options. This is for kotlin
+# android.add_compil_options = "additionalArguments", "-Xno-param-assertions", "-Xjvm-default=all", "-Xopt-in=kotlin.RequiresOptIn"
+#android.add_compil_options =
+
+# (list) Java classes to add as activities to the manifest.
+#android.add_activities = com.example.ExampleActivity
+
+# (str) OUYA Console category. Should be one of GAME or APP
+# If you leave this blank, OUYA support will not be enabled
+#android.ouya.category = GAME
+
+# (str) Filename of OUYA Console icon. It must be a 732x412 png image.
+#android.ouya.icon.filename = %(source.dir)s/data/ouya_icon.png
+
+# (str) XML file to include as an intent filters in <activity> tag
+#android.manifest.intent_filters =
+
+# (list) Android additional libraries to copy into libs/armeabi
+#android.add_libs_armeabi = libs/android/*.so
+#android.add_libs_armeabi_v7a = libs/android-v7/*.so
+#android.add_libs_arm64_v8a = libs/android-v8/*.so
+#android.add_libs_x86 = libs/android-x86/*.so
+#android.add_libs_x86_64 = libs/android-x64/*.so
+
+# (bool) Indicate whether the screen should stay on
+# Don't forget to add the WAKE_LOCK permission if you set this to True
+#android.wakelock = False
+
+# (list) Android application meta-data to set (key=value format)
+#android.meta_data =
+
+# (list) Android library project to add (will be added in the
+# project.properties automatically.)
+#android.library_references =
+
+# (list) Android shared libraries which will be added to AndroidManifest.xml using <uses-library> tag
+#android.uses_library =
+
+# (str) Android logcat filters (by default on application run logcat output are displayed)
+#android.logcat_filters = *:S python:D
+
+# (bool) Copy library instead of making a libpymodules.so
+#android.copy_libs = 1
+
+# (str) The Android arch to build for, choices: armeabi-v7a, arm64-v8a, x86, x86_64
+android.arch = arm64-v8a
+
+#
+# Python for android (p4a) specific
+#
+
+# (str) python-for-android URL to use for checkout
+#p4a.url =
+
+# (str) python-for-android fork to use in case if p4a.url is not specified, defaults to upstream (kivy)
+#p4a.fork =
+
+# (str) python-for-android branch to use, defaults to master
+#p4a.branch = master
+
+# (str) python-for-android git clone directory (if empty, it will be automatically cloned from github)
+#p4a.source_dir =
+
+# (str) The directory where the python distribution (python-install) will be installed
+#p4a.python_install_dir = $(BUILD_PATH)/python-install
+
+# (str) Extra directory where to look for python-for-android recipes
+#p4a.extra_recipes_dir =
+
+# (str) Extra directory where to look for python-for-android modules
+#p4a.extra_modules_dir =
+
+# (list) Extra python-for-android whitelist
+#p4a.whitelist =
+
+# (list) Extra python-for-android blacklist
+#p4a.blacklist =
+
+# (bool) Use Python 3.9 or 3.10 on Android. Defaults to 3.8.
+#p4a.setup_py = 3.9
+
+# (bool) Use Python 3.10 on Android. Deprecated, use p4a.setup_py.
+#p4a.setup_py = 3.10
+
+# (list) Bootstrap to use for android builds
+# android.bootstrap = sdl2
+
+# (str) Android entry point, default is ok for Kivy-based app
+# android.entrypoint = org.renpy.android.PythonActivity
+
+# (str) Android app theme, default is ok for Kivy-based app
+# android.apptheme = "@android:style/Theme.NoTitleBar"
+
+# (str) Android XML for the app theme, only if you want to use a custom theme
+# android.xml = android-theme.xml
+
+# (str) Full name including package path of the Java class that implements Python Activity
+# python.activity = org.kivy.android.PythonActivity
+
+# (str) Extra xml to write directly inside the <manifest> element of AndroidManifest.xml
+# manifest.extra.xml =
+
+# (str) Extra xml to write directly inside the <manifest><application> tag of AndroidManifest.xml
+# manifest.application.extra.xml =
+
+# (str) Extra xml to write directly inside the <manifest><application><activity> tag of AndroidManifest.xml
+# manifest.application.activity.extra.xml =
+
+# (list) Pattern to whitelist for the whole project
+# whitelist_patterns =
+
+# (regex) Pattern to blacklist for the whole project (overrides whitelist_patterns)
+# blacklist_patterns =
+
+# (str) Path to a custom whitelist file
+# whitelist_filename =
+
+# (str) Path to a custom blacklist file
+# blacklist_filename =
+
+[buildozer]
+
+# (int) Log level (0 = error only, 1 = info, 2 = debug (with command output))
+log_level = 2
+
+# (int) Display warning if buildozer is run as root (0 = False, 1 = True)
+warn_on_root = 1
+
+# (str) Path to build artifact storage, absolute or relative to spec file
+# buildozer.build_dir = ./.buildozer
+
+# (str) Path to build output (i.e. .apk, .ipa) storage
+# buildozer.bin_dir = ./bin
+
+#    -----------------------------------------------------------------------------
+#    List as sections
+#
+#    You can define all the "list" as [section:key].
+#    Each line will be considered as a option to the list.
+#    Let's take [app] / source.exclude_patterns.
+#    Instead of doing:
+#
+#[app]
+#source.exclude_patterns = license,data/audio/*.wav,data/images/original/*
+#
+#    This can be translated into:
+#
+#[app:source.exclude_patterns]
+#license
+#data/audio/*.wav
+#data/images/original/*
+#
+#    -----------------------------------------------------------------------------
+#    Profiles
+#
+#    You can extend section / key with a profile
+#    For example, you want to deploy a demo version of your application without
+#    HD content. You could first change the title to add "(demo)" in the name
+#    and extend the excluded directories to remove the HD content.
+#
+#[app@demo]
+#title = My Application (demo)
+#
+#[app:source.exclude_patterns@demo]
+#images/hd/*
+#
+#    Then, invoke the command line with the "demo" profile:
+#
+#buildozer --profile demo android debug
+EOF
         
         echo "buildozer.spec 创建完成"
+        echo "查看 buildozer.spec 内容:"
+        head -20 buildozer.spec
 
     - name: Setup Android SDK and NDK manually
       run: |
@@ -91,80 +408,110 @@ jobs:
         
         # 创建目录
         SDK_DIR="$HOME/android-sdk"
-        mkdir -p $SDK_DIR
+        NDK_DIR="$SDK_DIR/ndk"
+        mkdir -p $SDK_DIR $NDK_DIR
         
         # 下载命令行工具
+        echo "下载 Android SDK 命令行工具..."
         wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
         unzip -q cmdline-tools.zip -d $SDK_DIR
         mkdir -p $SDK_DIR/cmdline-tools/latest
         mv $SDK_DIR/cmdline-tools/* $SDK_DIR/cmdline-tools/latest/
+        rm -rf $SDK_DIR/cmdline-tools
         
         # 设置环境变量
         echo "ANDROID_HOME=$SDK_DIR" >> $GITHUB_ENV
         echo "ANDROID_SDK_ROOT=$SDK_DIR" >> $GITHUB_ENV
+        echo "ANDROID_NDK_HOME=$NDK_DIR/25.1.8937393" >> $GITHUB_ENV
+        echo "ANDROID_NDK_ROOT=$NDK_DIR/25.1.8937393" >> $GITHUB_ENV
         echo "PATH=$SDK_DIR/cmdline-tools/latest/bin:$SDK_DIR/platform-tools:$PATH" >> $GITHUB_ENV
         
         # 接受许可证
+        echo "接受 Android 许可证..."
         mkdir -p $SDK_DIR/licenses
-        echo "8933bad161af4178b1185d1a37fbf41ea5269c55" > $SDK_DIR/licenses/android-sdk-license
-        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> $SDK_DIR/licenses/android-sdk-license
-        echo "84831b9409646a918e30573b4ad6d4e4e2fae60e" >> $SDK_DIR/licenses/android-sdk-license
+        echo -e "\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n84831b9409646a918e30573b4ad6d4e4e2fae60e" > $SDK_DIR/licenses/android-sdk-license
         
         # 安装必要组件
-        echo "y" | $SDK_DIR/cmdline-tools/latest/bin/sdkmanager --licenses
+        echo "安装 Android SDK 组件..."
+        yes | $SDK_DIR/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1
         $SDK_DIR/cmdline-tools/latest/bin/sdkmanager \
           "platform-tools" \
           "platforms;android-33" \
-          "build-tools;33.0.0"
-        
-        # 下载并安装特定版本的 NDK
-        NDK_VERSION="25.1.8937393"
-        NDK_URL="https://dl.google.com/android/repository/android-ndk-r${NDK_VERSION%%.*}-${NDK_VERSION#*.*.*.}-linux.zip"
-        echo "下载 NDK: $NDK_URL"
-        wget -q $NDK_URL -O android-ndk.zip
-        unzip -q android-ndk.zip -d $SDK_DIR
-        mv $SDK_DIR/android-ndk-r${NDK_VERSION%%.*}-${NDK_VERSION#*.*.*.} $SDK_DIR/ndk/$NDK_VERSION
+          "build-tools;33.0.0" \
+          "patcher;v4" \
+          "tools" \
+          "cmake;3.22.1" \
+          "ndk;25.1.8937393"
         
         echo "Android SDK 和 NDK 安装完成"
         echo "ANDROID_HOME: $ANDROID_HOME"
-        echo "NDK 路径: $ANDROID_HOME/ndk/$NDK_VERSION"
+        echo "NDK 路径: $ANDROID_NDK_HOME"
 
     - name: Build APK
       run: |
         cd ${{ env.BUILD_DIR }}
         
-        echo "设置环境变量..."
+        echo "===== 开始构建 APK ====="
+        
         # 设置环境变量
         export ANDROID_HOME="$HOME/android-sdk"
         export ANDROID_SDK_ROOT="$HOME/android-sdk"
         export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/25.1.8937393"
         export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/25.1.8937393"
+        export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
         
-        echo "检查安装..."
+        echo "环境变量:"
         echo "ANDROID_HOME: $ANDROID_HOME"
         echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
-        ls -la $ANDROID_HOME/
+        echo "PATH 中包含:"
+        echo $PATH | tr ':' '\n' | grep android
         
-        # 告诉 Buildozer 使用已安装的 SDK 和 NDK
-        echo "android.ndk_path = $ANDROID_NDK_HOME" >> buildozer.spec
-        echo "android.sdk_path = $ANDROID_HOME" >> buildozer.spec
+        echo "检查安装..."
+        ls -la $ANDROID_HOME/ || echo "ANDROID_HOME 不存在"
+        ls -la $ANDROID_NDK_HOME/ || echo "ANDROID_NDK_HOME 不存在"
         
-        echo "开始构建 APK..."
-        
-        # 清理
-        buildozer android clean 2>&1 | tail -10 || true
-        
-        # 构建
-        timeout 2400 buildozer -v android debug 2>&1 | tee build.log
-        
-        # 检查结果
-        if find . -name "*.apk" -type f 2>/dev/null | grep -q .; then
-          echo "✅ 构建成功!"
-          find . -name "*.apk" -type f -exec ls -lh {} \;
+        echo "更新 buildozer.spec 中的路径..."
+        # 在 spec 文件中设置 SDK 和 NDK 路径
+        if grep -q "android.ndk_path" buildozer.spec; then
+          sed -i "s|android.ndk_path =.*|android.ndk_path = $ANDROID_NDK_HOME|" buildozer.spec
         else
-          echo "❌ 构建失败"
+          echo "android.ndk_path = $ANDROID_NDK_HOME" >> buildozer.spec
+        fi
+        
+        if grep -q "android.sdk_path" buildozer.spec; then
+          sed -i "s|android.sdk_path =.*|android.sdk_path = $ANDROID_HOME|" buildozer.spec
+        else
+          echo "android.sdk_path = $ANDROID_HOME" >> buildozer.spec
+        fi
+        
+        echo "开始清理..."
+        buildozer android clean 2>&1 | tail -20 || echo "清理完成"
+        
+        echo "开始构建..."
+        # 设置更长的超时时间（90分钟）
+        timeout 5400 buildozer -v android debug 2>&1 | tee build.log || {
+          echo "构建可能超时或有错误"
           echo "最后 200 行日志:"
           tail -200 build.log
+          # 检查是否有部分构建成功
+        }
+        
+        echo "检查构建结果..."
+        # 查找 APK 文件
+        if find . -name "*.apk" -type f 2>/dev/null | grep -q .; then
+          echo "✅ APK 构建成功!"
+          find . -name "*.apk" -type f -exec ls -lh {} \;
+          # 复制到 bin 目录（如果不在那里）
+          mkdir -p bin
+          find . -name "*.apk" -type f -exec cp {} bin/ \;
+          echo "APK 文件已复制到 bin 目录"
+          ls -la bin/
+        else
+          echo "❌ 没有找到 APK 文件，构建可能失败"
+          echo "===== 最后 500 行构建日志 ====="
+          tail -500 build.log
+          echo "===== .buildozer 目录内容 ====="
+          find .buildozer -type f -name "*.log" | head -10
           exit 1
         fi
 
@@ -176,7 +523,7 @@ jobs:
         path: |
           ${{ env.BUILD_DIR }}/bin/*.apk
           ${{ env.BUILD_DIR }}/*.apk
-        if-no-files-found: warn
+        if-no-files-found: error
         retention-days: 7
 
     - name: Upload logs
@@ -186,6 +533,32 @@ jobs:
         name: build-logs
         path: |
           ${{ env.BUILD_DIR }}/build.log
+          ${{ env.BUILD_DIR }}/.buildozer/**/*.log
           ${{ env.BUILD_DIR }}/.buildozer/*.log
         if-no-files-found: warn
         retention-days: 7
+
+    - name: Debug info (失败时运行)
+      if: failure()
+      run: |
+        cd ${{ env.BUILD_DIR }}
+        echo "===== 调试信息 ====="
+        echo "当前目录:"
+        pwd
+        echo "文件列表:"
+        ls -la
+        echo "Python 版本:"
+        python3 --version
+        echo "Buildozer 版本:"
+        buildozer --version 2>&1 || echo "无法获取 buildozer 版本"
+        echo ".buildozer 目录内容:"
+        find .buildozer -type f -name "*.log" 2>/dev/null | head -20
+        echo "检查是否有日志文件:"
+        if [ -f "build.log" ]; then
+          echo "build.log 文件大小:"
+          wc -l build.log
+          echo "最后 100 行:"
+          tail -100 build.log
+        else
+          echo "没有找到 build.log"
+        fi
