@@ -35,7 +35,7 @@ jobs:
           ANDROID_HOME="/home/runner/.buildozer/android/platform/android-sdk"
           BUILD_TOOLS_PATH="/home/runner/.buildozer/android/platform/android-sdk/build-tools/29.0.3"
           CMDLINE_TOOLS_PATH="/home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest"
-          export ANDROID_NDK_URL=https://mirrors.tuna.tsinghua.edu.cn/android/repository/android-ndk-r25.2.9519653-linux.zip
+          export ANDROID_NDK_URL=https://mirrors.aliyun.com/android/repository/android-ndk-r25c-linux.zip
 
           # 创建所需目录（确保目录存在，避免文件找不到）
           mkdir -p "$USER_BIN"
