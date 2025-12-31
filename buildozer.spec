@@ -26,7 +26,7 @@ android.permissions = INTERNET
 # Android 配置
 android.api = 30
 android.minapi = 21
-android.ndk = 23b
+android.ndk = 25.2.9519653
 
 
 [buildozer]
