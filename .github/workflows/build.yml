@@ -87,7 +87,9 @@ jobs:
       - name: Install Android Components
         run: |
           ANDROID_HOME="/home/runner/.buildozer/android/platform/android-sdk"
-          "$ANDROID_HOME/tools/bin/sdkmanager" "platforms;android-31" "build-tools;29.0.3" "platform-tools" > /dev/null 2>&1
+          "$ANDROID_HOME/tools/bin/sdkmanager" --update
+          "$ANDROID_HOME/tools/bin/sdkmanager" "platforms;android-31" "build-tools;29.0.3" "platform-tools" "ndk;25.2.9519653" > /dev/null 2>&1
+
 
       # 步骤7：执行Buildozer打包（生成Android APK文件）
       - name: Build Android APK with Buildozer
