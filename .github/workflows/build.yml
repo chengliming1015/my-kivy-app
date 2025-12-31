@@ -82,7 +82,6 @@ jobs:
           # 4. 提前下载并解压我们的NDK（避免Buildozer后续自动下载）
           wget $ANDROID_NDK_URL -O android-ndk-r25c-linux.zip
           unzip -q android-ndk-r25c-linux.zip -d /home/runner/.buildozer/android/platform/
-          mv /home/runner/.buildozer/android/platform/android-ndk-r25c/* /home/runner/.buildozer/android/platform/android-ndk-r25c/
           rm -rf android-ndk-r25c-linux.zip
 
       # 新增步骤：配置Buildozer Spec，彻底禁用自动NDK下载
