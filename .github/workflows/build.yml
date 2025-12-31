@@ -84,28 +84,29 @@ jobs:
           unzip -q android-ndk-r25c-linux.zip -d /home/runner/.buildozer/android/platform/
           rm -rf android-ndk-r25c-linux.zip
 
-      # 新增步骤：配置Buildozer Spec，彻底禁用自动NDK下载
+      # 新增步骤：配置Buildozer Spec，彻底禁用自动NDK下载（修复所有语法错误）
       - name: Configure Buildozer Spec (Disable Auto NDK Download)
         run: |
           if [ -f "./buildozer.spec" ]; then
-           echo "Buildozer spec file found, configuring..."
+            echo "Buildozer spec file found, configuring..."
           else
-           echo "Buildozer spec file not found, creating fallback..."
-          cat > ./buildozer.spec << EOF
-          [app]
-           title = KivyHappyNewYear2026
-           source.dir = .
-           source.main.py = main.py
-           android.ndk = r25c
-           android.ndk_path = /home/runner/.buildozer/android/platform/android-ndk-r25c
-           android.sdk_path = /home/runner/.buildozer/android/platform/android-sdk
-           android.automatic_ndk = False
-           android.automatic_sdk = False
+            echo "Buildozer spec file not found, creating fallback..."
+            # 修复：EOF顶格书写，配置内容无多余缩进，解决Bash语法冲突
+            cat > ./buildozer.spec << EOF
+[app]
+title = KivyHappyNewYear2026
+source.dir = .
+source.main.py = main.py
+android.ndk = r25c
+android.ndk_path = /home/runner/.buildozer/android/platform/android-ndk-r25c
+android.sdk_path = /home/runner/.buildozer/android/platform/android-sdk
+android.automatic_ndk = False
+android.automatic_sdk = False
 
-          [buildozer]
-           cache_dir = /home/runner/.buildozer/cache
-           no_cache = True
-           EOF
+[buildozer]
+cache_dir = /home/runner/.buildozer/cache
+no_cache = True
+EOF
           fi
           # 2. 赋予配置文件读取权限
           chmod +r ./buildozer.spec
@@ -113,14 +114,6 @@ jobs:
           echo "P4A_ANDROID_NDK_VERSION=r25c" >> $GITHUB_ENV
           echo "P4A_ANDROID_NDK_PATH=/home/runner/.buildozer/android/platform/android-ndk-r25c" >> $GITHUB_ENV
           echo "P4A_DISABLE_AUTOMATIC_DEPENDENCIES=1" >> $GITHUB_ENV
-
-
-
-
-
-
-
-          
 
       # 步骤4：安装Python依赖（Buildozer + Kivy，打包必备）
       - name: Install Python Dependencies
