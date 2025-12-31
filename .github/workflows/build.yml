@@ -1,150 +1,56 @@
-name: Build Android APK
+name: Build Android APK with Buildozer
 
+# 触发条件：push到main分支，或手动触发
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-
+    runs-on: ubuntu-22.04  # 推荐22.04，兼容性最好
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: 检出代码
+        uses: actions/checkout@v4
 
-    - name: Setup environment
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          python3-pip \
-          python3-dev \
-          openjdk-17-jdk \
-          git \
-          zip \
-          unzip
-        
-        # 安装 Buildozer 和依赖
-        pip3 install --upgrade pip
-        pip3 install buildozer
-        pip3 install cython==0.29.33
-        pip3 install kivy
+      - name: 安装系统依赖
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y \
+              git zip unzip openjdk-17-jdk \
+              python3-pip autoconf libtool pkg-config \
+              zlib1g-dev libncurses5-dev libncursesw5-dev \
+              libtinfo5 cmake libffi-dev libssl-dev \
+              libsqlite3-dev libbz2-dev libreadline-dev \
+              libgdbm-dev liblzma-dev \
+              android-sdk-platform-tools android-sdk-build-tools
 
-    - name: Create main.py if not exists
-      run: |
-        if [ ! -f "main.py" ]; then
-          echo "Creating main.py..."
-          cat > main.py << 'EOF'
-import kivy
-kivy.require('2.1.0')
+      - name: 设置Python环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'  # 适配buildozer的Python版本（避免3.11+兼容性问题）
 
-from kivy.app import App
-from kivy.uix.button import Button
+      - name: 安装Buildozer和依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install buildozer cython==0.29.36  # cython指定版本避免兼容问题
 
-class TestApp(App):
-    def build(self):
-        return Button(text='Hello Kivy')
+      - name: 缓存Buildozer依赖（加速构建）
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.buildozer
+            ./.buildozer
+          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            ${{ runner.os }}-buildozer-
 
-if __name__ == '__main__':
-    TestApp().run()
-EOF
-        fi
+      - name: 构建APK
+        run: buildozer android debug
 
-    - name: Initialize Buildozer
-      run: |
-        # 初始化 buildozer.spec，如果不存在的话
-        if [ ! -f "buildozer.spec" ]; then
-          echo "Initializing buildozer.spec..."
-          buildozer init
-          
-          # 修改默认配置
-          sed -i 's/^title = My Application/title = MyApp/' buildozer.spec
-          sed -i 's/^package.name = myapp/package.name = testapp/' buildozer.spec
-          sed -i 's/^requirements = /requirements = python3,kivy/' buildozer.spec
-          sed -i 's/^android.api = 27/android.api = 33/' buildozer.spec
-          sed -i 's/^android.minapi = 21/android.minapi = 21/' buildozer.spec
-          sed -i 's/^android.sdk = 20/android.sdk = 33/' buildozer.spec
-          sed -i 's/^android.ndk = 19c/android.ndk = 25.1.8937393/' buildozer.spec
-          sed -i 's/^android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
-          
-          echo "log_level = 2" >> buildozer.spec
-        fi
-
-    - name: Build APK (with error handling)
-      id: build
-      continue-on-error: true
-      run: |
-        # 创建日志目录
-        mkdir -p logs
-        
-        # 构建并保存日志
-        echo "Starting build process..."
-        
-        # 尝试构建，重定向所有输出到日志文件
-        set -o pipefail
-        if buildozer -v android debug 2>&1 | tee logs/build.log; then
-          echo "BUILD_STATUS=success" >> $GITHUB_OUTPUT
-        else
-          echo "BUILD_STATUS=failed" >> $GITHUB_OUTPUT
-          echo "Build failed with exit code: $?"
-        fi
-        
-        # 检查是否生成了APK
-        if ls bin/*.apk 2>/dev/null; then
-          echo "APK found!"
-          echo "APK_FOUND=true" >> $GITHUB_OUTPUT
-        else
-          echo "No APK found"
-          echo "APK_FOUND=false" >> $GITHUB_OUTPUT
-        fi
-
-    - name: Check build results
-      run: |
-        echo "Build status: ${{ steps.build.outputs.BUILD_STATUS }}"
-        echo "APK found: ${{ steps.build.outputs.APK_FOUND }}"
-        
-        if [[ "${{ steps.build.outputs.BUILD_STATUS }}" == "success" ]] && [[ "${{ steps.build.outputs.APK_FOUND }}" == "true" ]]; then
-          echo "✅ Build successful!"
-          echo "Generated APK files:"
-          ls -lh bin/*.apk
-        else
-          echo "❌ Build failed or no APK generated"
-          
-          # 显示日志内容
-          if [ -f "logs/build.log" ]; then
-            echo "=== Last 200 lines of build log ==="
-            tail -200 logs/build.log
-            
-            echo "=== Error summary ==="
-            grep -i "error\|fail\|exception" logs/build.log | head -20
-          else
-            echo "No build log found!"
-          fi
-          
-          # 检查 .buildozer 目录
-          if [ -d ".buildozer" ]; then
-            echo "=== .buildozer logs ==="
-            find .buildozer -name "*.log" -type f | head -3 | while read log; do
-              echo "=== $log ==="
-              tail -50 "$log"
-            done
-          fi
-        fi
-
-    - name: Upload APK artifact
-      if: steps.build.outputs.APK_FOUND == 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: android-apk
-        path: bin/*.apk
-        retention-days: 7
-
-    - name: Upload build logs
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-logs
-        path: logs/
-        if-no-files-found: warn
-        retention-days: 7
+      - name: 上传APK产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: ./bin/*.apk  # 构建后的APK在bin目录下
