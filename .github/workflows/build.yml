@@ -87,12 +87,11 @@ jobs:
       # 新增步骤：配置Buildozer Spec，彻底禁用自动NDK下载
       - name: Configure Buildozer Spec (Disable Auto NDK Download)
         run: |
-          # 1. 确认buildozer.spec存在，不存在则兜底生成
           if [ -f "./buildozer.spec" ]; then
-            echo "Buildozer spec file found, configuring..."
+           echo "Buildozer spec file found, configuring..."
           else
-            echo "Buildozer spec file not found, creating fallback..."
-            cat > ./buildozer.spec << EOF
+           echo "Buildozer spec file not found, creating fallback..."
+          cat > ./buildozer.spec << EOF
           [app]
            title = KivyHappyNewYear2026
            source.dir = .
@@ -114,6 +113,14 @@ jobs:
           echo "P4A_ANDROID_NDK_VERSION=r25c" >> $GITHUB_ENV
           echo "P4A_ANDROID_NDK_PATH=/home/runner/.buildozer/android/platform/android-ndk-r25c" >> $GITHUB_ENV
           echo "P4A_DISABLE_AUTOMATIC_DEPENDENCIES=1" >> $GITHUB_ENV
+
+
+
+
+
+
+
+          
 
       # 步骤4：安装Python依赖（Buildozer + Kivy，打包必备）
       - name: Install Python Dependencies
