@@ -1,33 +1,18 @@
 [app]
-# 应用信息
-title = My Python App
-package.name = mypythonapp
-package.domain = org.mypython
+# 项目名称（可自定义，和你的APK名称一致）
+title = KivyHappyNewYear2026
+# Python主文件（若你的项目主文件不是main.py，修改为你的实际文件名）
 source.dir = .
-
-# 包含的文件类型
-source.include_exts = py,png,jpg,kv,atlas
-
-# 版本
-version = 1.0
-
-# 依赖
-requirements = python3,kivy==2.1.0
-
-# 方向
-orientation = portrait
-
-# 图标
-icon.filename = icon.png
-
-# 权限
-android.permissions = INTERNET
-
-# Android 配置
-android.api = 30
-android.minapi = 21
-android.ndk = 25.2.9519653
-
+source.main.py = main.py
+# 安卓打包配置
+android.ndk = r25c
+android.ndk_path = /home/runner/.buildozer/android/platform/android-ndk-r25c
+android.sdk_path = /home/runner/.buildozer/android/platform/android-sdk
+# 禁用自动下载NDK/SDK
+android.automatic_ndk = False
+android.automatic_sdk = False
 
 [buildozer]
-log_level = 2
+# 禁用缓存，强制使用自定义NDK
+cache_dir = /home/runner/.buildozer/cache
+no_cache = True
