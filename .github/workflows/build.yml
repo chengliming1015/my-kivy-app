@@ -94,20 +94,20 @@ jobs:
           else
             echo "Buildozer spec file not found, creating fallback..."
             cat > ./buildozer.spec << EOF
-[app]
-title = KivyHappyNewYear2026
-source.dir = .
-source.main.py = main.py
-android.ndk = r25c
-android.ndk_path = /home/runner/.buildozer/android/platform/android-ndk-r25c
-android.sdk_path = /home/runner/.buildozer/android/platform/android-sdk
-android.automatic_ndk = False
-android.automatic_sdk = False
+          [app]
+           title = KivyHappyNewYear2026
+           source.dir = .
+           source.main.py = main.py
+           android.ndk = r25c
+           android.ndk_path = /home/runner/.buildozer/android/platform/android-ndk-r25c
+           android.sdk_path = /home/runner/.buildozer/android/platform/android-sdk
+           android.automatic_ndk = False
+           android.automatic_sdk = False
 
-[buildozer]
-cache_dir = /home/runner/.buildozer/cache
-no_cache = True
-EOF
+          [buildozer]
+           cache_dir = /home/runner/.buildozer/cache
+           no_cache = True
+           EOF
           fi
           # 2. 赋予配置文件读取权限
           chmod +r ./buildozer.spec
