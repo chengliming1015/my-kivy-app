@@ -17,7 +17,20 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 步骤2：安装系统级依赖（修正APT命令格式，移除行内注释，核心修复）
+      # 步骤2：优化网络配置（禁用IPv6，验证连通性，核心兜底）
+      - name: Optimize Network Configuration
+        run: |
+          # 1. 禁用IPv6（避免IPv6配置异常导致的网络不可达）
+          sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
+          sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
+          # 2. 验证关键域名连通性（PyPI、Google，确认网络可达）
+          ping -c 3 mirrors.aliyun.com
+          ping -c 3 dl.google.com
+          # 3. 配置网络超时（增加默认超时时间）
+          echo "PIP_DEFAULT_TIMEOUT=120" >> $GITHUB_ENV
+          echo "BUILDOZER_DOWNLOAD_TIMEOUT=300" >> $GITHUB_ENV
+
+      # 步骤3：安装系统级依赖（修正APT命令格式，确保依赖包安装成功）
       - name: Install System Dependencies
         run: |
           # 注释单独成行，不干扰apt命令执行
@@ -30,7 +43,7 @@ jobs:
             android-sdk-platform-tools unzip wget \
             libssl-dev zlib1g-dev libncurses5-dev libffi-dev libsqlite3-dev
 
-      # 步骤3：配置打包环境（路径、权限、AIDL兜底，强化编译环境）
+      # 步骤4：配置打包环境（路径、权限、AIDL兜底，强化编译环境）
       - name: Configure Buildozer Environment
         run: |
           # 定义核心工作路径（用户权限目录，避免权限报错）
@@ -85,27 +98,30 @@ jobs:
           export BUILDOZER_NO_CACHE=1
           # 3. 指定NDK根目录，让Buildozer直接识别，无需自动查找
           echo "ANDROID_NDK_ROOT=/home/runner/.buildozer/android/platform/android-ndk-r25c" >> $GITHUB_ENV
-          # 4. 提前下载并解压我们的NDK（避免Buildozer后续自动下载）
+          # 4. 提前下载并解压我们的NDK（避免Buildozer后续自动下载，减少网络依赖）
           wget $ANDROID_NDK_URL -O android-ndk-r25c-linux.zip
           unzip -q android-ndk-r25c-linux.zip -d /home/runner/.buildozer/android/platform/
           rm -rf android-ndk-r25c-linux.zip
 
-      # 新增：配置用户私有目录到PATH，兜底识别所有可执行命令
+      # 步骤5：配置用户私有目录到PATH，兜底识别所有可执行命令
       - name: Configure User PATH for All Commands
         run: |
           echo "PATH=$HOME/.local/bin:/usr/local/bin:$PATH" >> $GITHUB_ENV
 
-      # 步骤4：安装Python依赖（全局安装Buildozer，确保命令可被系统找到）
+      # 步骤6：安装Python依赖（更换PyPI镜像源，优化网络下载，全局安装Buildozer）
       - name: Install Python Dependencies
         run: |
           python3 -m pip install --upgrade pip
-          # 移除--user参数，全局安装Buildozer 1.4.0，解决Exit code 127（命令未找到）
+          # 更换PyPI镜像源（阿里云国外镜像，适配GitHub Actions节点，提高下载稳定性）
+          pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
+          pip config set global.trusted-host mirrors.aliyun.com
+          # 全局安装Buildozer 1.4.0，避免命令未找到
           python3 -m pip install --upgrade buildozer==1.4.0
           # 验证：查看buildozer命令路径，确认是否可被找到
           which buildozer
           buildozer --version
 
-      # 新增步骤：配置Buildozer Spec（无EOF，仅检查文件+赋予权限+配置环境变量）
+      # 步骤7：配置Buildozer Spec（无EOF，仅检查文件+赋予权限+配置环境变量）
       - name: Configure Buildozer Spec (Disable Auto NDK Download)
         run: |
           # 1. 检查手动创建的buildozer.spec是否存在（不存在则直接报错）
@@ -118,12 +134,12 @@ jobs:
             exit 1 # 退出构建并提示用户手动创建文件
           fi
 
-          # 2. 配置P4A环境变量，强制禁用自动NDK/SDK下载（核心兜底）
+          # 2. 配置P4A环境变量，强制禁用自动NDK/SDK下载（减少网络依赖，核心兜底）
           echo "P4A_ANDROID_NDK_VERSION=r25c" >> $GITHUB_ENV
           echo "P4A_ANDROID_NDK_PATH=/home/runner/.buildozer/android/platform/android-ndk-r25c" >> $GITHUB_ENV
           echo "P4A_DISABLE_AUTOMATIC_DEPENDENCIES=1" >> $GITHUB_ENV
 
-      # 步骤5：接受Android许可证（修复Broken pipe，确保打包顺利）
+      # 步骤8：接受Android许可证（修复Broken pipe，确保打包顺利）
       - name: Accept Android Licenses
         run: |
           ANDROID_HOME="/home/runner/.buildozer/android/platform/android-sdk"
@@ -131,26 +147,18 @@ jobs:
           # 用echo替代yes，解决管道时序差异导致的Broken pipe报错
           echo -e "y\ny\ny\ny\ny\ny\ny\ny" | "$ANDROID_HOME/tools/bin/sdkmanager" --licenses
 
-      # 步骤6：安装Android核心组件（API 31 + Build Tools 29.0.3，兼容Kivy）
+      # 步骤9：安装Android核心组件（API 31 + Build Tools 29.0.3，兼容Kivy）
       - name: Install Android Components
         run: |
           ANDROID_HOME="/home/runner/.buildozer/android/platform/android-sdk"
           "$ANDROID_HOME/tools/bin/sdkmanager" --update
-          # 不下载NDK，避免和手动下载的冲突
+          # 不下载NDK，避免和手动下载的冲突，减少网络依赖
           "$ANDROID_HOME/tools/bin/sdkmanager" "platforms;android-31" "build-tools;29.0.3" "platform-tools" > /dev/null 2>&1
 
-      # 步骤7：执行Buildozer打包（输出完整详细日志，解决命令未找到问题）
+      # 步骤10：执行Buildozer打包（增加超时配置，输出完整详细日志）
       - name: Build Android APK with Buildozer
         run: |
           # 验证：再次确认buildozer命令可用
           which buildozer
-          # 与buildozer.spec的log_level=2叠加，输出最详细的日志
-          buildozer android debug --verbose
-
-      # 步骤8：上传APK产物（方便下载到本地安装）
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Kivy-HappyNewYear2026-APK
-          path: ./bin/*.apk
-          retention-days: 7
+          # 与buildozer.spec的log_level=2叠加，输出最详细的日志，增加打包超时兜底
+          buildozer android debug --verbose --timeout 300
