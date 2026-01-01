@@ -17,138 +17,118 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 步骤2：优化网络配置（跳过危险 ping 验证，禁用 IPv6，配置超时）
+      # 步骤2：优化网络配置（极简容错，避免Step终止）
       - name: Optimize Network Configuration
         run: |
           sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 || true
           sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1 || true
-          ping -c 3 pypi.org || true
-          ping -c 3 dl.google.com || true
           echo "PIP_DEFAULT_TIMEOUT=120" >> $GITHUB_ENV
           echo "BUILDOZER_DOWNLOAD_TIMEOUT=300" >> $GITHUB_ENV
 
-      # 新增：步骤3：清理 Buildozer 残留缓存（彻底消除历史干扰，核心修复）
+      # 步骤3：清理Buildozer残留缓存（彻底消除历史干扰）
       - name: Clean Buildozer Residual Cache
         run: |
           rm -rf ./.buildozer
           rm -rf ./android-ndk-r25c-linux.zip
           rm -rf ./cmdline-tools.zip
 
-      # 步骤4：安装系统级依赖（补全所有 hostpython3 编译必需依赖）
+      # 步骤4：安装系统级依赖（极简纯净格式，解决解析失败，核心修复）
       - name: Install System Dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y \
-            software-properties-common apt-transport-https ca-certificates \
-            git python3-pip python3-dev python3-distutils python3-setuptools \
-            build-essential cython3 libgl1-mesa-dev libgles2-mesa-dev pkg-config \
-            autoconf automake libtool cmake openjdk-17-jdk aidl coreutils util-linux \
-            android-sdk-platform-tools unzip wget \
-            # 基础依赖
-            libssl-dev zlib1g-dev libncurses5-dev libffi-dev libsqlite3-dev \
-            # 新增：hostpython3 编译必需补充依赖
-            libbz2-dev libreadline-dev tk-dev liblzma-dev
+          # 先更新apt源（加容错），再用极简格式安装所有依赖
+          sudo apt-get update -y || true
+          # 核心：所有依赖包整合为极简格式，减少换行，避免解析错误
+          sudo apt-get install -y software-properties-common apt-transport-https ca-certificates git python3-pip python3-dev python3-distutils python3-setuptools build-essential cython3 libgl1-mesa-dev libgles2-mesa-dev pkg-config autoconf automake libtool cmake openjdk-17-jdk aidl coreutils util-linux android-sdk-platform-tools unzip wget libssl-dev zlib1g-dev libncurses5-dev libffi-dev libsqlite3-dev libbz2-dev libreadline-dev tk-dev liblzma-dev
 
-      # 步骤5：配置打包环境（新增 hostpython3 专用编译环境变量）
+      # 步骤5：配置打包环境（极简配置，强化hostpython3编译）
       - name: Configure Buildozer Environment
         run: |
-          # 定义核心工作路径
+          # 定义核心路径与NDK地址
           USER_BIN="/home/runner/.local/bin"
           ANDROID_HOME="/home/runner/.buildozer/android/platform/android-sdk"
-          BUILD_TOOLS_PATH="/home/runner/.buildozer/android/platform/android-sdk/build-tools/29.0.3"
-          CMDLINE_TOOLS_PATH="/home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest"
           export ANDROID_NDK_URL=https://github.com/chengliming1015/my-kivy-app/releases/download/ndk-25c/android-ndk-r25c-linux.zip
 
-          # 创建所需目录
-          mkdir -p "$USER_BIN" "$BUILD_TOOLS_PATH" "$CMDLINE_TOOLS_PATH"
-          mkdir -p "$ANDROID_HOME/platform-tools" "$ANDROID_HOME/tools/bin"
-          mkdir -p /home/runner/.buildozer/android/platform/android-ndk-r25c
+          # 创建必要目录（极简合并）
+          mkdir -p "$USER_BIN" "$ANDROID_HOME/platform-tools" "$ANDROID_HOME/tools/bin" "/home/runner/.buildozer/android/platform/android-ndk-r25c" "/home/runner/.buildozer/android/platform/android-sdk/build-tools/29.0.3" "/home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest"
 
-          # 配置 Cython 软链接
+          # 配置软链接与资源下载（加容错）
           ln -s /usr/bin/cython3 "$USER_BIN/cython" || true
-
-          # 下载并解压资源（加容错）
           wget $ANDROID_NDK_URL -O android-ndk-r25c-linux.zip || true
           unzip -q android-ndk-r25c-linux.zip -d /home/runner/.buildozer/android/platform/ || true
           wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip || true
           unzip -q cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools/" || true
-          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools/"* "$CMDLINE_TOOLS_PATH/" || true
-          rm -rf "$ANDROID_HOME/cmdline-tools/cmdline-tools" || true
+          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools/"* "$ANDROID_HOME/cmdline-tools/latest/" || true
+          ln -s "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "$ANDROID_HOME/tools/bin/sdkmanager" || true
+          chmod +x "$ANDROID_HOME/tools/bin/sdkmanager" "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" || true
+          cp /usr/bin/aidl "$ANDROID_HOME/build-tools/29.0.3/aidl" "$ANDROID_HOME/platform-tools/aidl" || true
+          chmod +x "$ANDROID_HOME/build-tools/29.0.3/aidl" "$ANDROID_HOME/platform-tools/aidl" || true
 
-          # 配置 sdkmanager 与 AIDL
-          ln -s "$CMDLINE_TOOLS_PATH/bin/sdkmanager" "$ANDROID_HOME/tools/bin/sdkmanager" || true
-          chmod +x "$ANDROID_HOME/tools/bin/sdkmanager" || true
-          cp /usr/bin/aidl "$BUILD_TOOLS_PATH/aidl" "$ANDROID_HOME/platform-tools/aidl" || true
-          chmod +x "$BUILD_TOOLS_PATH/aidl" "$ANDROID_HOME/platform-tools/aidl" || true
-
-          # 配置环境变量（强化 hostpython3 编译）
-          echo "PATH=$USER_BIN:$CMDLINE_TOOLS_PATH/bin:$BUILD_TOOLS_PATH:$PATH" >> $GITHUB_ENV
+          # 配置环境变量（强化hostpython3编译）
+          echo "PATH=$USER_BIN:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/build-tools/29.0.3:$PATH" >> $GITHUB_ENV
           echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
           echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
           echo "CFLAGS=-I/usr/include -I/usr/include/x86_64-linux-gnu -DWITH_BZ2 -DWITH_READLINE" >> $GITHUB_ENV
           echo "LDFLAGS=-L/usr/lib -L/usr/lib/x86_64-linux-gnu -lbz2 -lreadline -lz -lssl -lcrypto" >> $GITHUB_ENV
           echo "PYTHON_CONFIGURE_OPTS=--enable-unicode=ucs4 --enable-shared --with-system-ffi --with-system-zlib" >> $GITHUB_ENV
 
-          # 清理临时文件，赋予权限
+          # 清理临时文件与权限配置
           chmod -R 777 /home/runner/.buildozer
           export BUILDOZER_NO_CACHE=1
           echo "ANDROID_NDK_ROOT=/home/runner/.buildozer/android/platform/android-ndk-r25c" >> $GITHUB_ENV
           rm -rf android-ndk-r25c-linux.zip cmdline-tools.zip || true
 
-      # 步骤6：配置 PATH，兜底识别所有命令
+      # 步骤6：配置PATH，兜底识别所有命令
       - name: Configure User PATH for All Commands
         run: |
           echo "PATH=$HOME/.local/bin:/usr/local/bin:$PATH" >> $GITHUB_ENV
 
-      # 步骤7：安装 Python 依赖（更换国外稳定镜像源）
+      # 步骤7：安装Python依赖（极简镜像源配置，避免网络问题）
       - name: Install Python Dependencies
         run: |
           python3 -m pip install --upgrade pip || true
+          # 极简镜像源配置，适配国外节点
           pip config set global.index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/
           pip config set global.trusted-host mirrors.tuna.tsinghua.edu.cn
-          pip config set global.extra-index-url https://pypi.org/simple/
           python3 -m pip install --upgrade buildozer==1.4.0 || true
           which buildozer || true
           buildozer --version || true
 
-      # 步骤8：配置 Buildozer Spec（禁用自动下载，减少网络依赖）
+      # 步骤8：配置Buildozer Spec（极简检查，禁用自动下载）
       - name: Configure Buildozer Spec (Disable Auto NDK Download)
         run: |
           if [ -f "./buildozer.spec" ]; then
-            echo "Buildozer spec file found, configuring..."
             chmod +r ./buildozer.spec
           else
-            echo "Error: Buildozer spec file not found! Please create it first."
+            echo "Error: buildozer.spec not found!"
             exit 1
           fi
           echo "P4A_ANDROID_NDK_VERSION=r25c" >> $GITHUB_ENV
           echo "P4A_ANDROID_NDK_PATH=/home/runner/.buildozer/android/platform/android-ndk-r25c" >> $GITHUB_ENV
           echo "P4A_DISABLE_AUTOMATIC_DEPENDENCIES=1" >> $GITHUB_ENV
 
-      # 步骤9：接受 Android 许可证（加容错）
+      # 步骤9：接受Android许可证（极简容错）
       - name: Accept Android Licenses
         run: |
           ANDROID_HOME="/home/runner/.buildozer/android/platform/android-sdk"
-          chmod +x "$ANDROID_HOME/tools/bin/sdkmanager" || true
           echo -e "y\ny\ny\ny\ny\ny\ny\ny" | "$ANDROID_HOME/tools/bin/sdkmanager" --licenses || true
 
-      # 步骤10：安装 Android 核心组件（加容错）
+      # 步骤10：安装Android核心组件（极简容错）
       - name: Install Android Components
         run: |
           ANDROID_HOME="/home/runner/.buildozer/android/platform/android-sdk"
           "$ANDROID_HOME/tools/bin/sdkmanager" --update || true
-          "$ANDROID_HOME/tools/bin/sdkmanager" "platforms;android-31" "build-tools;29.0.3" "platform-tools" > /dev/null 2>&1 || true
+          "$ANDROID_HOME/tools/bin/sdkmanager" "platforms;android-31" "build-tools;29.0.3" "platform-tools" || true
 
-      # 步骤11：执行 Buildozer 打包（输出详细日志，加容错）
+      # 步骤11：执行Buildozer打包（极简容错，输出详细日志）
       - name: Build Android APK with Buildozer
         run: |
           buildozer android debug --verbose --timeout 300 || true
 
-      # 步骤12：上传 APK 产物（适配 Buildozer 实际输出路径，核心修复 Artifacts 缺失）
+      # 步骤12：上传APK产物（适配实际路径，确保Artifacts可用）
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: KivyHappyNewYear2026-APK
-          # 适配 Buildozer 实际 APK 输出路径（覆盖所有可能的架构目录）
           path: |
             ./.buildozer/android/platform/build-*/dists/*/bin/*.apk
             ./bin/*.apk
