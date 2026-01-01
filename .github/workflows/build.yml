@@ -15,6 +15,17 @@ jobs:
       - name: 拉取仓库代码
         uses: actions/checkout@v4
 
+      # 新增步骤：解决Python 3.10兼容性问题，切换到Python 3.9（稳定兼容Buildozer 1.4.0）
+      - name: 切换到Python 3.9（解决临时文件关闭问题，不复发旧问题）
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y python3.9 python3.9-dev python3.9-distutils
+          # 配置Python 3.9为默认，保留之前的依赖逻辑
+          sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 100
+          sudo update-alternatives --config python3
+          # 安装pip for Python 3.9
+          curl https://bootstrap.pypa.io/get-pip.py | python3.9
+
       # 步骤2：清理旧缓存（解决之前的缓存残留问题，避免hostpython3旧文件干扰）
       - name: 清理旧缓存与临时文件
         run: |
@@ -22,6 +33,9 @@ jobs:
           rm -rf ./bin
           rm -rf ./android-ndk-r25c-linux.zip
           rm -rf ./cmdline-tools.zip
+          # 新增：清理系统临时文件，赋予临时目录完整权限
+          sudo chmod -R 777 /tmp
+          rm -rf /tmp/* || true
 
       # 步骤3：安装所有必需依赖（补全之前的libssl-dev、libbz2-dev等，解决hostpython3失败问题）
       - name: 安装系统级依赖（完整无遗漏，不复发旧问题）
@@ -67,6 +81,11 @@ jobs:
       # 步骤5：打包APK（核心步骤，保留之前成功的命令，无冗余）
       - name: 执行Buildozer打包APK（不复发hostpython3等旧问题）
         run: |
+          # 新增：设置临时文件环境变量，避免文件提前关闭
+          export TMPDIR=/tmp/buildozer_temp
+          mkdir -p $TMPDIR
+          chmod 777 $TMPDIR
+          # 原有打包命令，保留不变
           buildozer android debug --verbose
 
       # 步骤6：查找并上传所有APK（捕获所有可能路径，解决之前无Artifacts问题）
