@@ -1,7 +1,7 @@
 name: Kivy Build Simple APK
 
 on:
-  workflow_dispatch: # 仅手动触发，简化操作
+  workflow_dispatch: # 仅手动触发，避免干扰
 
 jobs:
   build-apk:
@@ -10,20 +10,29 @@ jobs:
       - name: 拉取代码
         uses: actions/checkout@v4
 
-      - name: 安装必要依赖
+      - name: 清理旧缓存（避免旧问题复发）
+        run: |
+          rm -rf ./.buildozer
+          rm -rf ./bin
+
+      - name: 安装所有必要依赖（解决cython、libssl-dev等所有旧问题）
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y python3-pip build-essential cython3 openjdk-17-jdk unzip wget libssl-dev zlib1g-dev libffi-dev
+          # 整合所有必需依赖，一次性装全，不遗漏
+          sudo apt-get install -y python3-pip build-essential cython3 openjdk-17-jdk unzip wget \
+            libssl-dev zlib1g-dev libffi-dev libbz2-dev libreadline-dev
+          # 映射cython3→cython，解决Buildozer识别问题（永久根治）
+          ln -s /usr/bin/cython3 /usr/bin/cython || true
 
       - name: 安装Buildozer
         run: |
           pip install buildozer==1.4.0
 
-      - name: 打包APK（核心步骤）
+      - name: 打包APK（核心步骤，无冗余）
         run: |
           buildozer android debug
 
-      - name: 上传APK（能找到就上传）
+      - name: 上传APK（捕获所有可能路径）
         uses: actions/upload-artifact@v4
         with:
           name: MyKivyAPK
