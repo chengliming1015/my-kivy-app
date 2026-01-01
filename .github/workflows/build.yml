@@ -17,16 +17,17 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 步骤2：安装系统级依赖（补充hostpython3编译所需依赖，核心修复）
+      # 步骤2：安装系统级依赖（修正APT命令格式，移除行内注释，核心修复）
       - name: Install System Dependencies
         run: |
+          # 注释单独成行，不干扰apt命令执行
+          # 包含Buildozer+hostpython3编译所需的所有核心依赖
           sudo apt-get update && sudo apt-get install -y \
             software-properties-common apt-transport-https ca-certificates \
             git python3-pip python3-dev python3-distutils python3-setuptools \
             build-essential cython3 libgl1-mesa-dev libgles2-mesa-dev pkg-config \
             autoconf automake libtool cmake openjdk-17-jdk aidl coreutils util-linux \
             android-sdk-platform-tools unzip wget \
-            # 新增：hostpython3编译必需的依赖包
             libssl-dev zlib1g-dev libncurses5-dev libffi-dev libsqlite3-dev
 
       # 步骤3：配置打包环境（路径、权限、AIDL兜底，强化编译环境）
@@ -73,7 +74,7 @@ jobs:
           echo "PATH=$BUILD_TOOLS_PATH:$PATH" >> $GITHUB_ENV
           echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
           echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
-          # 新增：强化Python编译环境变量，助力hostpython3构建
+          # 强化Python编译环境变量，助力hostpython3构建
           echo "CFLAGS=-I/usr/include/openssl" >> $GITHUB_ENV
           echo "LDFLAGS=-L/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
 
