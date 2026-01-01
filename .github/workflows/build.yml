@@ -1,28 +1,43 @@
-name: Kivy Build APK (最终完整版)
+name: Kivy Build APK (完整未简化版，修复apt_pkg错误)
 on:
   workflow_dispatch:
+
 jobs:
   build-apk:
     runs-on: ubuntu-22.04
     defaults:
       run:
         shell: bash
+
     steps:
       - name: 拉取仓库代码
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-      - name: 切换到Python 3.9
+      - name: 切换到Python 3.9（修复apt_pkg错误）
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y software-properties-common
+          # 先修复apt_pkg相关依赖，避免脚本执行错误
+          sudo apt-get update -y || true
+          sudo apt-get install -y --reinstall python3-apt python3-pip
+          sudo ln -s /usr/lib/python3/dist-packages/apt_pkg.cpython-310-x86_64-linux-gnu.so /usr/lib/python3/dist-packages/apt_pkg.so
+          
+          # 安装必要工具并添加仓库
+          sudo apt-get install -y software-properties-common apt-transport-https ca-certificates
           sudo add-apt-repository ppa:deadsnakes/ppa -y
           sudo apt-get update -y
-          sudo apt-get install -y python3.9 python3.9-dev python3.9-distutils
+          
+          # 安装Python 3.9及相关工具
+          sudo apt-get install -y python3.9 python3.9-dev python3.9-distutils python3.9-pip
           sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 100
           sudo update-alternatives --config python3
           curl https://bootstrap.pypa.io/get-pip.py | python3.9
+          
+          # 验证安装
+          python3 --version
+          pip3 --version
 
-      - name: 清理旧缓存与临时文件
+      - name: 清理旧缓存、临时文件与无效目录
         run: |
           rm -rf ./.buildozer
           rm -rf ./bin
@@ -30,8 +45,11 @@ jobs:
           rm -rf ./cmdline-tools.zip
           sudo chmod -R 777 /tmp
           rm -rf /tmp/* || true
+          rm -rf /home/runner/.buildozer || true
+          echo "=== 清理完成，当前目录下的无效文件已删除 ==="
+          ls -la ./
 
-      - name: 安装系统级依赖
+      - name: 安装所有系统级必需依赖
         run: |
           sudo apt-get update -y
           sudo apt-get install -y \
@@ -40,32 +58,66 @@ jobs:
             build-essential cython3 openjdk-17-jdk aidl coreutils util-linux \
             android-sdk-platform-tools unzip wget \
             libssl-dev zlib1g-dev libncurses5-dev libffi-dev libsqlite3-dev \
-            libbz2-dev libreadline-dev tk-dev liblzma-dev
-          echo "=== 查找cython3实际安装路径 ==="
+            libbz2-dev libreadline-dev tk-dev liblzma-dev \
+            libgl1-mesa-dev libgles2-mesa-dev pkg-config autoconf automake libtool
+          
+          echo "=== 查找cython3实际安装路径，开始精准映射 ==="
           CYTHON3_PATH=$(which cython3)
           echo "cython3实际路径：$CYTHON3_PATH"
+          
           if [ -n "$CYTHON3_PATH" ]; then
             sudo ln -s "$CYTHON3_PATH" /usr/bin/cython
             echo "=== Cython映射成功：$CYTHON3_PATH → /usr/bin/cython ==="
             cython --version || true
           else
-            echo "=== 错误：cython3未安装成功 ==="
+            echo "=== 错误：cython3未安装成功，终止流程 ==="
             exit 1
           fi
+          echo "=== 核心依赖安装验证完成 ==="
 
       - name: 安装Buildozer 1.4.0
         run: |
-          python3 -m pip install --upgrade pip
+          python3 -m pip install --upgrade pip setuptools wheel
           pip install buildozer==1.4.0
+          echo "=== 验证Buildozer安装结果 ==="
           which buildozer
           buildozer --version
+          buildozer --version > /dev/null 2>&1 && echo "=== Buildozer配置正常 ==="
+
+      - name: 配置Buildozer打包环境变量
+        run: |
+          export TMPDIR=/tmp/buildozer_temp
+          mkdir -p $TMPDIR
+          chmod 777 $TMPDIR
+          export ANDROID_HOME=/home/runner/.buildozer/android/platform/android-sdk
+          export ANDROID_NDK_HOME=/home/runner/.buildozer/android/platform/android-ndk-r25c
+          export PATH=$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools:$ANDROID_NDK_HOME
+          echo "=== 打包环境变量配置完成 ==="
+          echo "TMPDIR: $TMPDIR"
+          echo "ANDROID_HOME: $ANDROID_HOME"
+          echo "PATH: $PATH"
 
       - name: 执行Buildozer打包APK
         run: |
           export TMPDIR=/tmp/buildozer_temp
           mkdir -p $TMPDIR
           chmod 777 $TMPDIR
+          export ANDROID_HOME=/home/runner/.buildozer/android/platform/android-sdk
+          export ANDROID_NDK_HOME=/home/runner/.buildozer/android/platform/android-ndk-r25c
+          export PATH=$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools:$ANDROID_NDK_HOME
           buildozer android debug --verbose
+
+      - name: 查找并验证生成的APK文件
+        run: |
+          echo "=== 查找所有生成的APK文件 ==="
+          find . -name "*.apk" -type f
+          APK_COUNT=$(find . -name "*.apk" -type f | wc -l)
+          echo "=== 共找到 $APK_COUNT 个APK文件 ==="
+          if [ $APK_COUNT -eq 0 ]; then
+            echo "=== 未找到APK文件，输出关键目录结构 ==="
+            ls -la ./bin/ || true
+            ls -la ./.buildozer/android/platform/ || true
+          fi
 
       - name: 上传生成的APK文件
         uses: actions/upload-artifact@v4
@@ -74,4 +126,5 @@ jobs:
           path: |
             ./bin/*.apk
             ./.buildozer/**/*.apk
+            /home/runner/.buildozer/**/*.apk
           if-no-files-found: warn
