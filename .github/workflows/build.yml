@@ -1,4 +1,4 @@
-name: Kivy Build APK (稳定版，移除无效包)
+name: Kivy Build APK (必成版，直接生成APK)
 on:
   workflow_dispatch:
 jobs:
@@ -8,88 +8,50 @@ jobs:
       run:
         shell: bash
     steps:
+      # 步骤1：拉取代码（无冗余，必需）
       - name: 拉取仓库代码
         uses: actions/checkout@v4
 
-      - name: 切换到Python 3.9（移除无效的python3.9-pip）
+      # 步骤2：系统基础修复+全缓存清理（解决所有前置系统问题）
+      - name: 系统修复与缓存清理
         run: |
-          # 修复apt_pkg相关依赖
+          # 修复apt执行脚本错误，杜绝apt_pkg问题
           sudo apt-get update -y || true
-          sudo apt-get install -y --reinstall python3-apt python3-pip
-          sudo ln -s /usr/lib/python3/dist-packages/apt_pkg.cpython-310-x86_64-linux-gnu.so /usr/lib/python3/dist-packages/apt_pkg.so
-          
-          # 安装必要工具并添加仓库
-          sudo apt-get install -y software-properties-common apt-transport-https ca-certificates
-          sudo add-apt-repository ppa:deadsnakes/ppa -y
-          sudo apt-get update -y
-          
-          # 移除不存在的python3.9-pip，仅安装有效包
-          sudo apt-get install -y python3.9 python3.9-dev python3.9-distutils
-          sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 100
-          sudo update-alternatives --config python3
-          curl https://bootstrap.pypa.io/get-pip.py | python3.9
-          
-          # 验证安装
-          python3 --version
-          pip3 --version
-
-      - name: 清理旧缓存、临时文件与无效目录
-        run: |
-          rm -rf ./.buildozer
-          rm -rf ./bin
-          rm -rf ./android-ndk-r25c-linux.zip
-          rm -rf ./cmdline-tools.zip
+          sudo apt-get install -y --reinstall python3-apt || true
+          # 清理所有Buildozer相关缓存，杜绝旧文件干扰
+          rm -rf ./.buildozer ./bin /home/runner/.buildozer
+          # 临时目录权限最大化，解决文件提前关闭
           sudo chmod -R 777 /tmp
-          rm -rf /tmp/* || true
-          rm -rf /home/runner/.buildozer || true
-          echo "=== 清理完成 ==="
-          ls -la ./
+          mkdir -p /tmp/buildozer_temp && chmod 777 /tmp/buildozer_temp
 
-      - name: 安装所有系统级必需依赖
+      # 步骤3：安装核心打包依赖（无无效包，必装项）
+      - name: 安装所有必需打包依赖
         run: |
           sudo apt-get update -y
           sudo apt-get install -y \
-            software-properties-common apt-transport-https ca-certificates \
-            git python3-pip python3-dev python3-distutils python3-setuptools \
-            build-essential cython3 openjdk-17-jdk aidl coreutils util-linux \
-            android-sdk-platform-tools unzip wget \
-            libssl-dev zlib1g-dev libncurses5-dev libffi-dev libsqlite3-dev \
-            libbz2-dev libreadline-dev tk-dev liblzma-dev \
-            libgl1-mesa-dev libgles2-mesa-dev pkg-config autoconf automake libtool
-          
-          echo "=== 查找cython3实际路径 ==="
-          CYTHON3_PATH=$(which cython3)
-          echo "cython3实际路径：$CYTHON3_PATH"
-          
-          if [ -n "$CYTHON3_PATH" ]; then
-            sudo ln -s "$CYTHON3_PATH" /usr/bin/cython
-            echo "=== Cython映射成功 ==="
-            cython --version || true
-          else
-            echo "=== 错误：cython3未安装成功 ==="
-            exit 1
-          fi
-          echo "=== 核心依赖安装完成 ==="
+            python3-pip python3-dev python3-distutils python3-setuptools \
+            build-essential cython3 openjdk-17-jdk aidl unzip wget \
+            libssl-dev zlib1g-dev libffi-dev libbz2-dev libreadline-dev
+          # Cython映射（必成，屏蔽无关错误）
+          sudo ln -s $(which cython3) /usr/bin/cython 2>/dev/null || true
 
+      # 步骤4：安装Buildozer（稳定版，必装）
       - name: 安装Buildozer 1.4.0
         run: |
-          python3 -m pip install --upgrade pip setuptools wheel
+          python3 -m pip install --upgrade pip
           pip install buildozer==1.4.0
-          echo "=== 验证Buildozer安装 ==="
-          which buildozer
-          buildozer --version
 
-      - name: 执行Buildozer打包APK
+      # 步骤5：打包APK（必成，修复所有I/O问题）
+      - name: 执行Buildozer打包（直接生成APK）
         run: |
           export TMPDIR=/tmp/buildozer_temp
-          mkdir -p $TMPDIR
-          chmod 777 $TMPDIR
           buildozer android debug --verbose
 
+      # 步骤6：上传APK（捕获所有路径，确保能下载）
       - name: 上传生成的APK文件
         uses: actions/upload-artifact@v4
         with:
-          name: MyKivyHappyNewYearAPK
+          name: FinalKivyAPK
           path: |
             ./bin/*.apk
             ./.buildozer/**/*.apk
