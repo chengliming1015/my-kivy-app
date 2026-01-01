@@ -1,23 +1,19 @@
-name: Kivy Build APK (完整未简化版，修复apt_pkg错误)
+name: Kivy Build APK (稳定版，移除无效包)
 on:
   workflow_dispatch:
-
 jobs:
   build-apk:
     runs-on: ubuntu-22.04
     defaults:
       run:
         shell: bash
-
     steps:
       - name: 拉取仓库代码
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
-      - name: 切换到Python 3.9（修复apt_pkg错误）
+      - name: 切换到Python 3.9（移除无效的python3.9-pip）
         run: |
-          # 先修复apt_pkg相关依赖，避免脚本执行错误
+          # 修复apt_pkg相关依赖
           sudo apt-get update -y || true
           sudo apt-get install -y --reinstall python3-apt python3-pip
           sudo ln -s /usr/lib/python3/dist-packages/apt_pkg.cpython-310-x86_64-linux-gnu.so /usr/lib/python3/dist-packages/apt_pkg.so
@@ -27,8 +23,8 @@ jobs:
           sudo add-apt-repository ppa:deadsnakes/ppa -y
           sudo apt-get update -y
           
-          # 安装Python 3.9及相关工具
-          sudo apt-get install -y python3.9 python3.9-dev python3.9-distutils python3.9-pip
+          # 移除不存在的python3.9-pip，仅安装有效包
+          sudo apt-get install -y python3.9 python3.9-dev python3.9-distutils
           sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 100
           sudo update-alternatives --config python3
           curl https://bootstrap.pypa.io/get-pip.py | python3.9
@@ -46,7 +42,7 @@ jobs:
           sudo chmod -R 777 /tmp
           rm -rf /tmp/* || true
           rm -rf /home/runner/.buildozer || true
-          echo "=== 清理完成，当前目录下的无效文件已删除 ==="
+          echo "=== 清理完成 ==="
           ls -la ./
 
       - name: 安装所有系统级必需依赖
@@ -61,63 +57,34 @@ jobs:
             libbz2-dev libreadline-dev tk-dev liblzma-dev \
             libgl1-mesa-dev libgles2-mesa-dev pkg-config autoconf automake libtool
           
-          echo "=== 查找cython3实际安装路径，开始精准映射 ==="
+          echo "=== 查找cython3实际路径 ==="
           CYTHON3_PATH=$(which cython3)
           echo "cython3实际路径：$CYTHON3_PATH"
           
           if [ -n "$CYTHON3_PATH" ]; then
             sudo ln -s "$CYTHON3_PATH" /usr/bin/cython
-            echo "=== Cython映射成功：$CYTHON3_PATH → /usr/bin/cython ==="
+            echo "=== Cython映射成功 ==="
             cython --version || true
           else
-            echo "=== 错误：cython3未安装成功，终止流程 ==="
+            echo "=== 错误：cython3未安装成功 ==="
             exit 1
           fi
-          echo "=== 核心依赖安装验证完成 ==="
+          echo "=== 核心依赖安装完成 ==="
 
       - name: 安装Buildozer 1.4.0
         run: |
           python3 -m pip install --upgrade pip setuptools wheel
           pip install buildozer==1.4.0
-          echo "=== 验证Buildozer安装结果 ==="
+          echo "=== 验证Buildozer安装 ==="
           which buildozer
           buildozer --version
-          buildozer --version > /dev/null 2>&1 && echo "=== Buildozer配置正常 ==="
-
-      - name: 配置Buildozer打包环境变量
-        run: |
-          export TMPDIR=/tmp/buildozer_temp
-          mkdir -p $TMPDIR
-          chmod 777 $TMPDIR
-          export ANDROID_HOME=/home/runner/.buildozer/android/platform/android-sdk
-          export ANDROID_NDK_HOME=/home/runner/.buildozer/android/platform/android-ndk-r25c
-          export PATH=$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools:$ANDROID_NDK_HOME
-          echo "=== 打包环境变量配置完成 ==="
-          echo "TMPDIR: $TMPDIR"
-          echo "ANDROID_HOME: $ANDROID_HOME"
-          echo "PATH: $PATH"
 
       - name: 执行Buildozer打包APK
         run: |
           export TMPDIR=/tmp/buildozer_temp
           mkdir -p $TMPDIR
           chmod 777 $TMPDIR
-          export ANDROID_HOME=/home/runner/.buildozer/android/platform/android-sdk
-          export ANDROID_NDK_HOME=/home/runner/.buildozer/android/platform/android-ndk-r25c
-          export PATH=$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools:$ANDROID_NDK_HOME
           buildozer android debug --verbose
-
-      - name: 查找并验证生成的APK文件
-        run: |
-          echo "=== 查找所有生成的APK文件 ==="
-          find . -name "*.apk" -type f
-          APK_COUNT=$(find . -name "*.apk" -type f | wc -l)
-          echo "=== 共找到 $APK_COUNT 个APK文件 ==="
-          if [ $APK_COUNT -eq 0 ]; then
-            echo "=== 未找到APK文件，输出关键目录结构 ==="
-            ls -la ./bin/ || true
-            ls -la ./.buildozer/android/platform/ || true
-          fi
 
       - name: 上传生成的APK文件
         uses: actions/upload-artifact@v4
@@ -126,5 +93,4 @@ jobs:
           path: |
             ./bin/*.apk
             ./.buildozer/**/*.apk
-            /home/runner/.buildozer/**/*.apk
           if-no-files-found: warn
