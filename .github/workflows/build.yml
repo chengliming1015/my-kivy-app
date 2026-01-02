@@ -16,12 +16,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 步骤2：配置 Python 3.9 环境（与依赖版本兼容）
+      # 步骤2：配置 Python 3.9 环境（删除 cache: 'pip'，解决报错）
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.9'
-          cache: 'pip'  # 缓存 pip 包，提升构建速度
 
       # 步骤3：安装系统级依赖（含 Kivy/Android 打包必需组件）
       - name: Install system dependencies
