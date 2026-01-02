@@ -47,21 +47,54 @@ jobs:
 
       - name: Configure Buildozer environment
         run: |
-          buildozer android update -v
-          mkdir -p ~/.buildozer/android/platform
-          wget https://dl.google.com/android/repository/android-ndk-r25b-linux.zip -O ndk.zip
-          unzip -q ndk.zip -d ~/.buildozer/android/platform/
-          mv ~/.buildozer/android/platform/android-ndk-r25b ~/.buildozer/android/platform/android-ndk-r25b
-          wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -O sdk.zip
-          unzip -q sdk.zip -d ~/.buildozer/android/platform/
-          mkdir -p ~/.buildozer/android/platform/android-sdk/cmdline-tools
-          mv ~/.buildozer/android/platform/cmdline-tools ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest
-          export ANDROID_HOME=~/.buildozer/android/platform/android-sdk
-          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
-          yes | sdkmanager --sdk_root=$ANDROID_HOME --licenses
-          sdkmanager --sdk_root=$ANDROID_HOME "build-tools;33.0.2" "platforms;android-33" "platform-tools"
-
-
+         # 定义绝对路径（避免 ~ 解析问题，核心优化）
+         SDK_ROOT="/home/runner/.buildozer/android/platform/android-sdk"
+         NDK_ROOT="/home/runner/.buildozer/android/platform/android-ndk-r25b"
+         CMDLINE_TOOLS="/home/runner/.buildozer/android/platform/cmdline-tools"
+    
+         # 1. 初始化 Buildozer 并创建完整目录结构（带权限）
+         buildozer android update -v
+         mkdir -p "${SDK_ROOT}" "${NDK_ROOT}" "${CMDLINE_TOOLS}"
+         chmod -R 755 /home/runner/.buildozer/android/platform/
+    
+         # 2. 下载并解压 NDK（绝对路径，保留原有功能）
+         wget https://dl.google.com/android/repository/android-ndk-r25b-linux.zip -O ndk.zip
+         unzip -q ndk.zip -d /home/runner/.buildozer/android/platform/
+         mv /home/runner/.buildozer/android/platform/android-ndk-r25b "${NDK_ROOT}"
+         chmod -R 755 "${NDK_ROOT}"
+    
+         # 3. 下载并解压 SDK 命令行工具（严格符合 sdkmanager 目录要求）
+         wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -O sdk.zip
+         unzip -q sdk.zip -d "${CMDLINE_TOOLS}"
+         mkdir -p "${SDK_ROOT}/cmdline-tools/latest"
+         mv "${CMDLINE_TOOLS}/cmdline-tools/"* "${SDK_ROOT}/cmdline-tools/latest/"
+         rm -rf "${CMDLINE_TOOLS}"
+         chmod -R 755 "${SDK_ROOT}"
+    
+         # 4. 配置环境变量（绝对路径，无 ~ 解析问题）
+         export ANDROID_HOME="${SDK_ROOT}"
+         export PATH="${SDK_ROOT}/cmdline-tools/latest/bin:${PATH}"
+         export ANDROID_NDK_HOME="${NDK_ROOT}"
+    
+         # 5. 自动接受所有许可证（强制静默，避免交互）
+         yes | sdkmanager --sdk_root="${SDK_ROOT}" --licenses > /dev/null 2>&1
+    
+         # 6. 安装 build-tools 及必需组件（带详细日志，确保安装成功）
+         sdkmanager --sdk_root="${SDK_ROOT}" --verbose \
+         "build-tools;33.0.2" \
+         "platforms;android-33" \
+         "platform-tools"
+    
+         # 7. 验证：确认 build-tools 文件夹存在（关键兜底，避免静默失败）
+         if [ ! -d "${SDK_ROOT}/build-tools/33.0.2" ]; then
+          echo "ERROR: build-tools 33.0.2 安装失败，路径不存在！"
+          ls -la "${SDK_ROOT}/"
+         exit 1
+         fi
+    
+         # 8. 最终权限配置，确保 Buildozer 可访问
+         chmod -R 755 "${SDK_ROOT}"
+ 
       - name: Build APK
         run: buildozer android debug deploy run -v
 
