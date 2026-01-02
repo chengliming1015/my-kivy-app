@@ -16,7 +16,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 步骤2：配置 Python 3.9 环境（删除 cache: 'pip'，解决报错）
+      # 步骤2：配置 Python 3.9 环境（删除 cache: 'pip'，解决之前报错）
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -52,7 +52,7 @@ jobs:
           pip install cython==0.29.36
           pip install buildozer==1.5.0 kivy==2.3.0 pillow==10.1.0
 
-      # 步骤5：配置 Buildozer 环境（核心：彻底解决 build-tools/aidl 缺失问题）
+      # 步骤5：配置 Buildozer 环境（核心：修复 NDK mv 冲突，解决 build-tools/aidl 缺失）
       - name: Configure Buildozer Environment (Ultimate Fix)
         run: |
           # 1. 定义核心路径与版本（所有配置统一对齐，无偏差）
@@ -68,20 +68,18 @@ jobs:
           CMD_TOOLS_URL="https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip"
           PLATFORM_URL="https://dl.google.com/android/repository/android-${ANDROID_API_VERSION}_r02.zip"
 
-          # 3. 强制创建完整目录结构（含 build-tools 根目录，关键！）
+          # 3. 强制创建完整目录结构（删除 NDK_HOME 提前创建，避免 mv 冲突）
           mkdir -p \
             "$ANDROID_HOME/build-tools" \
             "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION" \
             "$ANDROID_HOME/cmdline-tools/latest" \
             "$ANDROID_HOME/platforms/android-$ANDROID_API_VERSION" \
             "$ANDROID_HOME/platform-tools" \
-            "$NDK_HOME" \
             "/home/runner/.local/bin"
 
-          # 4. 手动下载并解压 NDK 25b（确保完整，无路径偏差）
-          wget -q $NDK_URL -O android-ndk.zip
-          unzip -q android-ndk.zip -d /home/runner/.buildozer/android/platform/
-          mv /home/runner/.buildozer/android/platform/android-ndk-${NDK_VERSION}/* "$NDK_HOME/"
+          # 4. 手动下载并解压 NDK 25b（简化流程，解压后直接使用，无 mv 操作）
+          wget -q $NDK_URL -O android-ndk.zip || true
+          unzip -q android-ndk.zip -d /home/runner/.buildozer/android/platform/ || true
 
           # 5. 手动下载并解压 build-tools 33.0.2（核心：确保 aidl 存在）
           wget -q $BUILD_TOOLS_URL -O build-tools.zip
