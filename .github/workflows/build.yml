@@ -1,5 +1,5 @@
 name: Build Kivy APK
-on: [workflow_dispatch]  # 仅手动触发，最稳
+on: [workflow_dispatch]
 jobs:
   build-android:
     runs-on: ubuntu-latest
@@ -7,20 +7,40 @@ jobs:
       - name: 拉取代码
         uses: actions/checkout@v4
 
-      - name: 安装核心系统依赖（官方必装，极简）
-        run: sudo apt-get update && sudo apt-get install -y openjdk-11-jdk ant gradle python3-pip wget unzip
+      - name: 缓存Buildozer依赖（解决大文件下载网络问题）
+        uses: actions/cache@v3
+        with:
+          path: ~/.buildozer
+          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            ${{ runner.os }}-buildozer-
 
-      - name: 安装Python依赖（锁定最新稳定版）
-        run: pip install --upgrade pip && pip install buildozer==1.5.0 kivy==2.3.0 cython==0.29.36
-
-      - name: 一键打包APK（带网络重试，解决Errno 101）
+      - name: 安装完整系统依赖（补全 AIDL 工具，关键小改动）
         run: |
-          # 最多重试3次，解决GitHub节点临时网络波动
+          sudo apt-get update
+          sudo apt-get install -y openjdk-11-jdk ant gradle python3-pip wget unzip \
+          libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
+          pkg-config libgl1-mesa-dev libgles2-mesa-dev python3-setuptools \
+          android-sdk-platform-tools libaidl-common-dev  # 新增：安装 AIDL 相关工具
+
+      - name: 安装Python依赖（锁定版本，确保安装成功）
+        run: |
+          pip install --upgrade pip
+          pip install buildozer==1.5.0 kivy==2.3.0 cython==0.29.36
+
+      - name: 补全打包目录权限（确保能创建 bin 目录）
+        run: chmod -R 777 . && mkdir -p bin
+
+      - name: 一键打包APK（带重试，修正错误提示）
+        run: |
           for i in 1 2 3; do
-            buildozer android debug -v && break  # 核心命令不变，成功则跳出循环
-            echo "第 $i 次打包失败（网络问题），5秒后重试..."
-            sleep 5  # 延迟5秒，避免频繁请求被限流
+            buildozer android debug -v && echo "打包成功，生成bin目录" && break
+            echo "第 $i 次打包失败，5秒后重试..."
+            sleep 5
           done
+
+      - name: 验证bin目录是否存在（调试用）
+        run: ls -la ./bin || echo "bin目录未生成，打包失败"
 
       - name: 上传APK成品
         uses: actions/upload-artifact@v4
