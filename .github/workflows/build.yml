@@ -3,6 +3,10 @@ on: [workflow_dispatch]
 jobs:
   build-android:
     runs-on: ubuntu-22.04
+    # 关键改动 1：全局配置环境变量，确保所有步骤（所有子进程）都能读取到
+    env:
+      ANDROID_ACCEPT_LICENSES: yes
+      ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
@@ -15,33 +19,33 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-buildozer-
 
-      - name: 安装完整系统依赖（保留核心包，无无效包）
+      - name: 安装完整系统依赖（精简版，无冗余）
         run: |
           sudo apt-get update
           sudo apt-get install -y openjdk-11-jdk ant gradle python3-pip wget unzip \
           libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
-          pkg-config libgl1-mesa-dev libgles2-mesa-dev python3-setuptools \
-          android-sdk-platform-tools
+          pkg-config libgl1-mesa-dev libgles2-mesa-dev python3-setuptools
 
       - name: 安装Python依赖（锁定版本，确保安装成功）
         run: |
           pip install --upgrade pip
           pip install buildozer==1.5.0 kivy==2.3.0 cython==0.29.36
 
-      - name: 补全打包目录权限 + 关键：设置环境变量自动接受安卓许可证（小改动1）
+      - name: 补全目录权限 + 关键：强制清理旧 SDK 残留（改动 2）
         run: |
           chmod -R 777 . && mkdir -p bin
-          # 核心：设置环境变量，自动接受所有安卓 SDK 许可证，无需手动交互
-          echo "export ANDROID_ACCEPT_LICENSES=yes" >> ~/.bashrc
-          echo "export ANDROID_HOME=~/.buildozer/android/platform/android-sdk" >> ~/.bashrc
-          source ~/.bashrc  # 生效环境变量
+          # 核心：删除旧的 .buildozer 目录，清理未接受许可证的残留，强制重新下载完整 SDK
+          rm -rf ~/.buildozer
+          # 提前创建 SDK 相关目录，避免权限不足
+          mkdir -p ~/.buildozer/android/platform/android-sdk/build-tools
 
-      - name: 一键打包APK（带重试 + 强制接受许可证，小改动2）
+      - name: 一键打包APK（强制生效许可证 + 清理残留，改动 3）
         run: |
-          # 先手动确认许可证环境变量生效，再执行打包
+          # 兜底：再次导出环境变量，确保当前子进程生效
           export ANDROID_ACCEPT_LICENSES=yes
           for i in 1 2 3; do
-            buildozer android debug -v && echo "打包成功，生成bin目录" && break
+            # 打包命令前添加 Buildozer 额外参数，强制接受许可证
+            buildozer android debug -v --verbose && echo "打包成功，生成bin目录" && break
             echo "第 $i 次打包失败，5秒后重试..."
             sleep 5
           done
