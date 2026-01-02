@@ -15,18 +15,20 @@ jobs:
       - name: Checkout Repository Code
         uses: actions/checkout@v4
 
-      # 步骤2：安装打包所需依赖（自动安装，无需手动干预）
+      # 步骤2：安装打包所需依赖（补充32位依赖，解决build-tools/Aidl缺失）
       - name: Install Build Dependencies
         run: |
           sudo apt update && sudo apt install -y \
           python3-pip python3-dev git zip unzip openjdk-17-jdk \
-          libssl-dev libffi-dev libxml2-dev libxslt1-dev zlib1g-dev
+          libssl-dev libffi-dev libxml2-dev libxslt1-dev zlib1g-dev \
+          lib32z1 lib32stdc++6  # 🔥 补充：32位运行依赖，支持android build-tools
           python3 -m pip install --upgrade pip setuptools virtualenv
           pip3 install --upgrade buildozer cython==0.29.36 pillow
 
-      # 步骤3：使用Buildozer构建Android APK（自动处理500M缓存，不残留）
+      # 步骤3：使用Buildozer构建Android APK（先清理损坏缓存，再打包，解决SDK缓存问题）
       - name: Build APK with Buildozer
         run: |
+          buildozer android clean  # 🔥 补充：清理之前损坏的安卓SDK/缓存
           buildozer android debug --no-clean
 
       # 步骤4：上传APK作为Artifact（仅上传纯净APK，方便你下载）
