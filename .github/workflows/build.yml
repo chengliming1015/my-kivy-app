@@ -97,24 +97,28 @@ jobs:
           unzip -q platform.zip -d "$ANDROID_HOME/platforms/"
           mv "$ANDROID_HOME/platforms/android-13" "$ANDROID_HOME/platforms/android-$ANDROID_API_VERSION"
 
-          # 8. 赋予最高权限（确保 Buildozer 可读取/执行所有文件，关键！）
-          chmod -R 775 "$ANDROID_HOME"
-          chmod -R 775 "$NDK_HOME"
-          chmod +x "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/aidl"  # 单独给 aidl 加执行权限
-
-          # 9. 严格验证：确保 build-tools 目录和 aidl 工具 100% 存在
+          # 8. 赋予最高权限（添加容错，避免目录不存在导致脚本终止，关键！）
+          chmod -R 775 "$ANDROID_HOME" || true  # 给 Android SDK 赋权，添加容错
+          if [ -d "$NDK_HOME" ]; then  # 先判断 NDK 目录是否存在，再赋权
+           chmod -R 775 "$NDK_HOME" || true
+          fi
+          # 先判断 aidl 文件是否存在，再添加执行权限，避免文件不存在导致失败
+          if [ -f "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/aidl" ]; then
+           chmod +x "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/aidl" || true
+          fi
+          # 9. 严格验证：确保 build-tools 目录和 aidl 工具 100% 存在（保留原逻辑，无修改）
           if [ ! -d "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION" ]; then
             echo "ERROR: build-tools $BUILD_TOOLS_VERSION 目录创建失败！"
             ls -la "$ANDROID_HOME/build-tools/"
-            exit 1
+          exit 1
           fi
           if [ ! -f "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/aidl" ]; then
             echo "ERROR: aidl 工具创建失败！"
-            ls -la "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/"
-            exit 1
+          ls -la "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/"
+           exit 1
           fi
 
-          # 10. 配置环境变量（传递给后续步骤，确保所有路径生效）
+          # 10. 配置环境变量（传递给后续步骤，确保所有路径生效，保留原逻辑，无修改）
           echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
           echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
           echo "ANDROID_NDK_ROOT=$NDK_HOME" >> $GITHUB_ENV
