@@ -22,7 +22,7 @@ sdk_path = /home/runner/.buildozer/android/platform/android-sdk
 ant_path = /usr/bin/ant
 gradle_path = /usr/bin/gradle
 python3 = True
-requirements = python3,kivy==2.3.0,pillow==10.1.0
+requirements = python3,kivy==2.3.0,pillow==10.1.0,cython==0.29.36
 orientation = portrait
 fullscreen = 0
 android.permissions = INTERNET,ACCESS_WIFI_STATE
