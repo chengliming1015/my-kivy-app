@@ -2,6 +2,7 @@
 title = KivyTemplate
 package.name = kivytemplate
 package.domain = org.kivytemplate
+version = 1.0.0
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
 source.exclude_exts = spec
