@@ -1,39 +1,67 @@
-name: Build 2026 Firework Kivy APK
+name: Build Kivy APK
 
-# 触发条件：1. 推送到main分支 2. 手动触发（推荐手动触发，更灵活）
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # 支持手动触发构建
 
 jobs:
-  build:
-    # 运行环境：GitHub官方Ubuntu 22.04（与你的环境完全一致）
-    runs-on: ubuntu-22.04
+  build-android:
+    runs-on: ubuntu-latest
     steps:
-      # 步骤1：拉取仓库代码到GitHub服务器
-      - name: Checkout Repository Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      # 步骤2：安装打包所需依赖（补充32位依赖，解决build-tools/Aidl缺失）
-      - name: Install Build Dependencies
-        run: |
-          sudo apt update && sudo apt install -y \
-          python3-pip python3-dev git zip unzip openjdk-17-jdk \
-          libssl-dev libffi-dev libxml2-dev libxslt1-dev zlib1g-dev \
-          lib32z1 lib32stdc++6  # 🔥 补充：32位运行依赖，支持android build-tools
-          python3 -m pip install --upgrade pip setuptools virtualenv
-          pip3 install --upgrade buildozer cython==0.29.36 pillow
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
 
-      # 步骤3：使用Buildozer构建Android APK（先清理损坏缓存，再打包，解决SDK缓存问题）
-      - name: Build APK with Buildozer
+      - name: Install system dependencies
         run: |
-          buildozer android clean  # 🔥 补充：清理之前损坏的安卓SDK/缓存
-          buildozer android debug --no-clean
+          sudo apt-get update
+          sudo apt-get install -y \
+            openjdk-11-jdk \
+            ant \
+            gradle \
+            zlib1g-dev \
+            libncurses5-dev \
+            libgdbm-dev \
+            libnss3-dev \
+            libssl-dev \
+            libreadline-dev \
+            libffi-dev \
+            wget \
+            unzip \
+            python3-pip \
+            python3-setuptools \
+            python3-wheel
 
-      # 步骤4：上传APK作为Artifact（仅上传纯净APK，方便你下载）
-      - name: Upload Finished APK
+      - name: Install Buildozer and dependencies
+        run: |
+          pip install --upgrade pip
+          pip install buildozer==1.5.0 kivy==2.3.0
+
+      - name: Configure Buildozer environment
+        run: |
+          buildozer android update -v
+          mkdir -p ~/.buildozer/android/platform
+          wget https://dl.google.com/android/repository/android-ndk-r25b-linux.zip -O ndk.zip
+          unzip -q ndk.zip -d ~/.buildozer/android/platform/
+          mv ~/.buildozer/android/platform/android-ndk-r25b ~/.buildozer/android/platform/android-ndk-r25b
+          wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -O sdk.zip
+          unzip -q sdk.zip -d ~/.buildozer/android/platform/
+          mkdir -p ~/.buildozer/android/platform/android-sdk/cmdline-tools
+          mv ~/.buildozer/android/platform/cmdline-tools ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest
+
+      - name: Build APK
+        run: buildozer android debug deploy run -v
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 2026-Firework-APK
+          name: Kivy-APK
           path: bin/*.apk
+          retention-days: 30
