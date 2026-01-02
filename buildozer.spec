@@ -14,7 +14,6 @@ log_level = 2
 warn_on_root = 1
 
 [android]
-[android]
 arch = armeabi-v7a,arm64-v8a  # 与命令中的 arch 对应，补充 arm64-v8a
 ndk = 25b
 ndk_path = /home/runner/.buildozer/android/platform/android-ndk-r25b
