@@ -49,3 +49,4 @@ android.build_dir = ./build
 android.dist_dir = ./bin
 # 安卓资源目录（无额外资源，留空即可）
 android.add_android_assets = assets
+android.build_tools = "33.0.0"
