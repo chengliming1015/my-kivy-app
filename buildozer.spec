@@ -16,7 +16,13 @@ android.api = 34
 android.minapi = 21
 android.arch = arm64-v8a,armeabi-v7a
 android.permissions = INTERNET
+android.sdk_build_tools_version = 34.0.0
+android.sdk_path = /home/runner/.buildozer/android/platform/android-sdk
+# 新增：指定 cmdline-tools 路径，让 Buildozer 找到 sdkmanager
+android.cmdline_tools_path = /home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest
 
 [buildozer]
 log_level = 2
 warn_on_root = 1
+build_dir = ./bin
+force_android_update = 1
