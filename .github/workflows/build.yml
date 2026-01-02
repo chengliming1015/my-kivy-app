@@ -2,7 +2,8 @@ name: Build Kivy APK
 on: [workflow_dispatch]
 jobs:
   build-android:
-    runs-on: ubuntu-latest
+    # 可选优化：指定 Ubuntu 22.04（更稳定，软件源更全，避免后续包找不到）
+    runs-on: ubuntu-22.04
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
@@ -15,13 +16,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-buildozer-
 
-      - name: 安装完整系统依赖（补全 AIDL 工具，关键小改动）
+      - name: 安装完整系统依赖（删掉无效包 libaidl-common-dev，小改动）
         run: |
           sudo apt-get update
           sudo apt-get install -y openjdk-11-jdk ant gradle python3-pip wget unzip \
           libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
           pkg-config libgl1-mesa-dev libgles2-mesa-dev python3-setuptools \
-          android-sdk-platform-tools libaidl-common-dev  # 新增：安装 AIDL 相关工具
+          android-sdk-platform-tools  # 仅保留核心 AIDL 所在包，删掉无效兜底包
 
       - name: 安装Python依赖（锁定版本，确保安装成功）
         run: |
