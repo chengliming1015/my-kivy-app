@@ -3,11 +3,9 @@ on: [workflow_dispatch]
 jobs:
   build-android:
     runs-on: ubuntu-22.04
-    # 全局环境变量：新增 cmdline-tools 路径配置，适配 Buildozer 旧路径问题
     env:
       ANDROID_ACCEPT_LICENSES: yes
       ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
-      # 新增：指定 cmdline-tools 路径，让 Buildozer 能找到 sdkmanager
       ANDROID_SDK_ROOT: /home/runner/.buildozer/android/platform/android-sdk
       CMDLINE_TOOLS_VERSION: 10406996
     steps:
@@ -34,26 +32,32 @@ jobs:
           pip install --upgrade pip
           pip install buildozer==1.5.0 kivy==2.3.0 cython==0.29.36
 
-      - name: 补全目录权限 + 清理旧残留 + 关键：手动安装 cmdline-tools（核心改动）
+      - name: 补全目录权限 + 清理旧残留 + 安装cmdline-tools + 核心：创建软链接（关键改动）
         run: |
           chmod -R 777 . && mkdir -p bin
           # 1. 清理旧的 .buildozer 目录，强制重新下载完整工具链
           rm -rf ~/.buildozer
-          # 2. 提前创建 SDK 相关目录，包括 cmdline-tools
-          mkdir -p ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest
+          # 2. 提前创建所有必要目录（包括旧路径 tools/bin，避免软链接创建失败）
+          mkdir -p ~/.buildozer/android/platform/android-sdk/{cmdline-tools/latest,tools/bin}
           # 3. 下载并解压 Android SDK cmdline-tools（包含 sdkmanager）
           wget https://dl.google.com/android/repository/commandlinetools-linux-${{ env.CMDLINE_TOOLS_VERSION }}_latest.zip -O cmdline-tools.zip
           unzip cmdline-tools.zip -d ~/.buildozer/android/platform/android-sdk/cmdline-tools/
-          # 4. 重命名目录，适配 Buildozer 查找路径（将 tools 改为 latest）
+          # 4. 重命名目录，适配标准 cmdline-tools 结构
           mv ~/.buildozer/android/platform/android-sdk/cmdline-tools/cmdline-tools/* ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/
-          rm -rf cmdline-tools.zip
-          # 5. 赋予 sdkmanager 执行权限
+          # 5. 核心：创建软链接，把新路径的 sdkmanager 映射到 Buildozer 认的旧路径
+          ln -s ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager \
+          ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager
+          # 6. 赋予 sdkmanager 执行权限（新旧路径都要兜底）
           chmod +x ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager
+          chmod +x ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager
+          # 7. 清理压缩包
+          rm -rf cmdline-tools.zip
 
       - name: 一键打包APK（兜底环境变量，确保 sdkmanager 被识别）
         run: |
-          # 兜底：导出环境变量，指定 sdkmanager 路径
+          # 兜底：导出环境变量，添加 sdkmanager 路径到 PATH
           export ANDROID_ACCEPT_LICENSES=yes
+          export PATH=$PATH:~/.buildozer/android/platform/android-sdk/tools/bin
           export PATH=$PATH:~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin
           for i in 1 2 3; do
             buildozer android debug -v --verbose && echo "打包成功，生成bin目录" && break
