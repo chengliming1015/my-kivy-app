@@ -33,7 +33,7 @@ p4a.local_recipes =
 p4a.bootstrap = sdl2
 # setup.py路径（无，留空即可）
 p4a.setup_py = 
-
+version = 1.0.0
 [buildozer]
 # Buildozer命令（Python3运行，适配Ubuntu 22.04环境）
 buildozer.cmd = python -m buildozer
