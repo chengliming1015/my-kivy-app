@@ -45,55 +45,41 @@ jobs:
           pip install cython==0.29.36
           pip install buildozer==1.5.0 kivy==2.3.0
 
-      - name: Configure Buildozer environment
+      - name: Configure Buildozer Environment
         run: |
-         # 定义绝对路径（避免 ~ 解析问题，核心优化）
-         SDK_ROOT="/home/runner/.buildozer/android/platform/android-sdk"
-         NDK_ROOT="/home/runner/.buildozer/android/platform/android-ndk-r25b"
-         CMDLINE_TOOLS="/home/runner/.buildozer/android/platform/cmdline-tools"
-    
-         # 1. 初始化 Buildozer 并创建完整目录结构（带权限）
-         buildozer android update -v
-         mkdir -p "${SDK_ROOT}" "${NDK_ROOT}" "${CMDLINE_TOOLS}"
-         chmod -R 755 /home/runner/.buildozer/android/platform/
-    
-         # 2. 下载并解压 NDK（绝对路径，保留原有功能）
-         wget https://dl.google.com/android/repository/android-ndk-r25b-linux.zip -O ndk.zip
-         unzip -q ndk.zip -d /home/runner/.buildozer/android/platform/
-         mv /home/runner/.buildozer/android/platform/android-ndk-r25b "${NDK_ROOT}"
-         chmod -R 755 "${NDK_ROOT}"
-    
-         # 3. 下载并解压 SDK 命令行工具（严格符合 sdkmanager 目录要求）
-         wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -O sdk.zip
-         unzip -q sdk.zip -d "${CMDLINE_TOOLS}"
-         mkdir -p "${SDK_ROOT}/cmdline-tools/latest"
-         mv "${CMDLINE_TOOLS}/cmdline-tools/"* "${SDK_ROOT}/cmdline-tools/latest/"
-         rm -rf "${CMDLINE_TOOLS}"
-         chmod -R 755 "${SDK_ROOT}"
-    
-         # 4. 配置环境变量（绝对路径，无 ~ 解析问题）
-         export ANDROID_HOME="${SDK_ROOT}"
-         export PATH="${SDK_ROOT}/cmdline-tools/latest/bin:${PATH}"
-         export ANDROID_NDK_HOME="${NDK_ROOT}"
-    
-         # 5. 自动接受所有许可证（强制静默，避免交互）
-         yes | sdkmanager --sdk_root="${SDK_ROOT}" --licenses > /dev/null 2>&1
-    
-         # 6. 安装 build-tools 及必需组件（带详细日志，确保安装成功）
-         sdkmanager --sdk_root="${SDK_ROOT}" --verbose \
-         "build-tools;33.0.2" \
-         "platforms;android-33" \
-         "platform-tools"
-    
-         # 7. 验证：确认 build-tools 文件夹存在（关键兜底，避免静默失败）
-         if [ ! -d "${SDK_ROOT}/build-tools/33.0.2" ]; then
-          echo "ERROR: build-tools 33.0.2 安装失败，路径不存在！"
-          ls -la "${SDK_ROOT}/"
-         exit 1
-         fi
-    
-         # 8. 最终权限配置，确保 Buildozer 可访问
-         chmod -R 755 "${SDK_ROOT}"
+          # 定义核心路径与NDK地址
+          USER_BIN="/home/runner/.local/bin"
+          ANDROID_HOME="/home/runner/.buildozer/android/platform/android-sdk"
+          export ANDROID_NDK_URL=https://github.com/chengliming1015/my-kivy-app/releases/download/ndk-25c/android-ndk-r25c-linux.zip
+
+          # 创建必要目录（极简合并）
+          mkdir -p "$USER_BIN" "$ANDROID_HOME/platform-tools" "$ANDROID_HOME/tools/bin" "/home/runner/.buildozer/android/platform/android-ndk-r25c" "/home/runner/.buildozer/android/platform/android-sdk/build-tools/29.0.3" "/home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest"
+
+          # 配置软链接与资源下载（加容错）
+          ln -s /usr/bin/cython3 "$USER_BIN/cython" || true
+          wget $ANDROID_NDK_URL -O android-ndk-r25c-linux.zip || true
+          unzip -q android-ndk-r25c-linux.zip -d /home/runner/.buildozer/android/platform/ || true
+          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip || true
+          unzip -q cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools/" || true
+          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools/"* "$ANDROID_HOME/cmdline-tools/latest/" || true
+          ln -s "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "$ANDROID_HOME/tools/bin/sdkmanager" || true
+          chmod +x "$ANDROID_HOME/tools/bin/sdkmanager" "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" || true
+          cp /usr/bin/aidl "$ANDROID_HOME/build-tools/29.0.3/aidl" "$ANDROID_HOME/platform-tools/aidl" || true
+          chmod +x "$ANDROID_HOME/build-tools/29.0.3/aidl" "$ANDROID_HOME/platform-tools/aidl" || true
+
+          # 配置环境变量（强化hostpython3编译）
+          echo "PATH=$USER_BIN:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/build-tools/29.0.3:$PATH" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "CFLAGS=-I/usr/include -I/usr/include/x86_64-linux-gnu -DWITH_BZ2 -DWITH_READLINE" >> $GITHUB_ENV
+          echo "LDFLAGS=-L/usr/lib -L/usr/lib/x86_64-linux-gnu -lbz2 -lreadline -lz -lssl -lcrypto" >> $GITHUB_ENV
+          echo "PYTHON_CONFIGURE_OPTS=--enable-unicode=ucs4 --enable-shared --with-system-ffi --with-system-zlib" >> $GITHUB_ENV
+
+          # 清理临时文件与权限配置
+          chmod -R 777 /home/runner/.buildozer
+          export BUILDOZER_NO_CACHE=1
+          echo "ANDROID_NDK_ROOT=/home/runner/.buildozer/android/platform/android-ndk-r25c" >> $GITHUB_ENV
+
  
       - name: Build APK
         run: buildozer android debug deploy run -v
