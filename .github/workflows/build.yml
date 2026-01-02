@@ -8,6 +8,8 @@ jobs:
       ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
       ANDROID_SDK_ROOT: /home/runner/.buildozer/android/platform/android-sdk
       CMDLINE_TOOLS_VERSION: 10406996
+      # 新增：指定 Java 17 为默认运行环境
+      JAVA_HOME: /usr/lib/jvm/temurin-17-jdk-amd64
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
@@ -20,19 +22,30 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-buildozer-
 
-      - name: 安装完整系统依赖（精简版 + 补装必要工具）
+      - name: 安装完整系统依赖（升级 Java 17，适配 sdkmanager）
         run: |
           sudo apt-get update
-          sudo apt-get install -y openjdk-11-jdk ant gradle python3-pip wget unzip \
+          # 卸载旧版 Java 11（避免冲突），安装 Java 17
+          sudo apt-get remove -y openjdk-11-jdk
+          sudo apt-get install -y openjdk-17-jdk ant gradle python3-pip wget unzip \
           libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
           pkg-config libgl1-mesa-dev libgles2-mesa-dev python3-setuptools
+          # 配置 Java 17 为全局默认版本
+          sudo update-alternatives --set java /usr/lib/jvm/temurin-17-jdk-amd64/bin/java
+          sudo update-alternatives --set javac /usr/lib/jvm/temurin-17-jdk-amd64/bin/javac
+
+      - name: 验证 Java 版本（确保切换到 17）
+        run: |
+          java -version
+          javac -version
+          echo "JAVA_HOME: $JAVA_HOME"
 
       - name: 安装Python依赖（锁定版本，确保安装成功）
         run: |
           pip install --upgrade pip
           pip install buildozer==1.5.0 kivy==2.3.0 cython==0.29.36
 
-      - name: 补全目录权限 + 清理旧残留 + 安装cmdline-tools + 核心：创建软链接（关键改动）
+      - name: 补全目录权限 + 清理旧残留 + 安装 cmdline-tools + 创建软链接
         run: |
           chmod -R 777 . && mkdir -p bin
           # 1. 清理旧的 .buildozer 目录，强制重新下载完整工具链
@@ -53,12 +66,12 @@ jobs:
           # 7. 清理压缩包
           rm -rf cmdline-tools.zip
 
-      - name: 一键打包APK（兜底环境变量，确保 sdkmanager 被识别）
+      - name: 一键打包APK（兜底环境变量，确保 sdkmanager 被识别并正常运行）
         run: |
-          # 兜底：导出环境变量，添加 sdkmanager 路径到 PATH
+          # 兜底：导出环境变量，指定 sdkmanager 路径和 Java 17
           export ANDROID_ACCEPT_LICENSES=yes
-          export PATH=$PATH:~/.buildozer/android/platform/android-sdk/tools/bin
           export PATH=$PATH:~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin
+          export JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64
           for i in 1 2 3; do
             buildozer android debug -v --verbose && echo "打包成功，生成bin目录" && break
             echo "第 $i 次打包失败，5秒后重试..."
