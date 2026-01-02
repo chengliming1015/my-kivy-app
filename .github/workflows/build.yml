@@ -1,5 +1,5 @@
-- name: Configure Buildozer Environment
-  run: |
+ - name: Configure Buildozer Environment
+   run: |
     # 定义核心路径（对齐 buildozer.spec 版本，核心修改）
     USER_BIN="/home/runner/.local/bin"
     ANDROID_HOME="/home/runner/.buildozer/android/platform/android-sdk"
