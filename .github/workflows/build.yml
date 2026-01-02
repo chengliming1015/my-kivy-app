@@ -100,22 +100,22 @@ jobs:
           # 8. 赋予最高权限（添加容错，避免目录不存在导致脚本终止，关键！）
           chmod -R 775 "$ANDROID_HOME" || true  # 给 Android SDK 赋权，添加容错
           if [ -d "$NDK_HOME" ]; then  # 先判断 NDK 目录是否存在，再赋权
-           chmod -R 775 "$NDK_HOME" || true
+            chmod -R 775 "$NDK_HOME" || true  # 修复：统一缩进2个空格，语法合规
           fi
           # 先判断 aidl 文件是否存在，再添加执行权限，避免文件不存在导致失败
           if [ -f "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/aidl" ]; then
-           chmod +x "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/aidl" || true
+            chmod +x "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/aidl" || true  # 修复：统一缩进2个空格，语法合规
           fi
           # 9. 严格验证：确保 build-tools 目录和 aidl 工具 100% 存在（保留原逻辑，无修改）
           if [ ! -d "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION" ]; then
             echo "ERROR: build-tools $BUILD_TOOLS_VERSION 目录创建失败！"
             ls -la "$ANDROID_HOME/build-tools/"
-          exit 1
+            exit 1  # 修复：统一缩进2个空格，语法合规
           fi
           if [ ! -f "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/aidl" ]; then
             echo "ERROR: aidl 工具创建失败！"
-          ls -la "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/"
-           exit 1
+            ls -la "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/"
+            exit 1  # 修复：统一缩进2个空格，语法合规
           fi
 
           # 10. 配置环境变量（传递给后续步骤，确保所有路径生效，保留原逻辑，无修改）
@@ -125,6 +125,7 @@ jobs:
           echo "PATH=$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
           echo "BUILD_TOOLS_VERSION=$BUILD_TOOLS_VERSION" >> $GITHUB_ENV
           echo "ANDROID_API_VERSION=$ANDROID_API_VERSION" >> $GITHUB_ENV
+        shell: /usr/bin/bash -e {0}  # 修复：补充缺失的 shell 配置，确保 bash -e 模式生效
 
       # 步骤6：深度清理缓存（避免旧配置/旧构建残留干扰，必做！）
       - name: Deep clean build caches
