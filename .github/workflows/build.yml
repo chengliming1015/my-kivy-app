@@ -47,39 +47,66 @@ jobs:
 
       - name: Configure Buildozer Environment
         run: |
-          # 定义核心路径与NDK地址
-          USER_BIN="/home/runner/.local/bin"
-          ANDROID_HOME="/home/runner/.buildozer/android/platform/android-sdk"
-          export ANDROID_NDK_URL=https://github.com/chengliming1015/my-kivy-app/releases/download/ndk-25c/android-ndk-r25c-linux.zip
+         # 定义核心路径（对齐 buildozer.spec 版本，核心修改）
+         USER_BIN="/home/runner/.local/bin"
+         ANDROID_HOME="/home/runner/.buildozer/android/platform/android-sdk"
+         # 对齐 spec 中的 NDK 25b（若需用 25c，同步修改 spec 中的 ndk = 25c）
+         ANDROID_NDK_URL="https://dl.google.com/android/repository/android-ndk-r25b-linux.zip"
+         BUILD_TOOLS_VERSION="33.0.2"  # 对齐 spec 中的 33.0.2
+         ANDROID_API_VERSION="33"      # 对齐 spec 中的 android.api = 33
 
-          # 创建必要目录（极简合并）
-          mkdir -p "$USER_BIN" "$ANDROID_HOME/platform-tools" "$ANDROID_HOME/tools/bin" "/home/runner/.buildozer/android/platform/android-ndk-r25c" "/home/runner/.buildozer/android/platform/android-sdk/build-tools/29.0.3" "/home/runner/.buildozer/android/platform/android-sdk/cmdline-tools/latest"
+         # 创建必要目录（对齐版本，保留极简合并）
+         mkdir -p \
+        "$USER_BIN" \
+        "$ANDROID_HOME/platform-tools" \
+        "$ANDROID_HOME/tools/bin" \
+        "/home/runner/.buildozer/android/platform/android-ndk-r25b" \
+        "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION" \
+        "$ANDROID_HOME/cmdline-tools/latest" \
+        "$ANDROID_HOME/platforms/android-$ANDROID_API_VERSION"
 
-          # 配置软链接与资源下载（加容错）
-          ln -s /usr/bin/cython3 "$USER_BIN/cython" || true
-          wget $ANDROID_NDK_URL -O android-ndk-r25c-linux.zip || true
-          unzip -q android-ndk-r25c-linux.zip -d /home/runner/.buildozer/android/platform/ || true
-          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip || true
-          unzip -q cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools/" || true
-          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools/"* "$ANDROID_HOME/cmdline-tools/latest/" || true
-          ln -s "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "$ANDROID_HOME/tools/bin/sdkmanager" || true
-          chmod +x "$ANDROID_HOME/tools/bin/sdkmanager" "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" || true
-          cp /usr/bin/aidl "$ANDROID_HOME/build-tools/29.0.3/aidl" "$ANDROID_HOME/platform-tools/aidl" || true
-          chmod +x "$ANDROID_HOME/build-tools/29.0.3/aidl" "$ANDROID_HOME/platform-tools/aidl" || true
+        # 配置软链接与资源下载（保留容错，对齐版本）
+        ln -s /usr/bin/cython3 "$USER_BIN/cython" || true
+        # 下载 NDK 25b（对齐 spec，若坚持 25c 请同步修改 spec）
+        wget $ANDROID_NDK_URL -O android-ndk-r25b-linux.zip || true
+        unzip -q android-ndk-r25b-linux.zip -d /home/runner/.buildozer/android/platform/ || true
+        # 下载新版 cmdline-tools（兼容 sdkmanager）
+        wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -O cmdline-tools.zip || true
+        unzip -q cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools/" || true
+        mv "$ANDROID_HOME/cmdline-tools/cmdline-tools/"* "$ANDROID_HOME/cmdline-tools/latest/" || true
+        ln -s "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "$ANDROID_HOME/tools/bin/sdkmanager" || true
+        chmod +x "$ANDROID_HOME/tools/bin/sdkmanager" "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" || true
 
-          # 配置环境变量（强化hostpython3编译）
-          echo "PATH=$USER_BIN:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/build-tools/29.0.3:$PATH" >> $GITHUB_ENV
-          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
-          echo "CFLAGS=-I/usr/include -I/usr/include/x86_64-linux-gnu -DWITH_BZ2 -DWITH_READLINE" >> $GITHUB_ENV
-          echo "LDFLAGS=-L/usr/lib -L/usr/lib/x86_64-linux-gnu -lbz2 -lreadline -lz -lssl -lcrypto" >> $GITHUB_ENV
-          echo "PYTHON_CONFIGURE_OPTS=--enable-unicode=ucs4 --enable-shared --with-system-ffi --with-system-zlib" >> $GITHUB_ENV
+       # 核心补充：用 sdkmanager 安装完整 build-tools 与平台组件（获取专用 AIDL）
+       export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+       # 自动接受所有许可证（避免交互）
+       yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses || true
+        # 安装对齐 spec 的 build-tools 与平台组件（获取专用 AIDL）
+       sdkmanager --sdk_root="$ANDROID_HOME" \
+       "build-tools;$BUILD_TOOLS_VERSION" \
+       "platforms;android-$ANDROID_API_VERSION" \
+       "platform-tools" || true
 
-          # 清理临时文件与权限配置
-          chmod -R 777 /home/runner/.buildozer
-          export BUILDOZER_NO_CACHE=1
-          echo "ANDROID_NDK_ROOT=/home/runner/.buildozer/android/platform/android-ndk-r25c" >> $GITHUB_ENV
+       # 验证：确认专用 AIDL 存在（兜底）
+       if [ ! -f "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/aidl" ]; then
+        echo "ERROR: Android 专用 AIDL 安装失败！"
+        ls -la "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/"
+       exit 1
+      fi
 
+       # 配置环境变量（保留强化 hostpython3 编译，对齐版本）
+       echo "PATH=$USER_BIN:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION:$PATH" >> $GITHUB_ENV
+       echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+       echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+       echo "CFLAGS=-I/usr/include -I/usr/include/x86_64-linux-gnu -DWITH_BZ2 -DWITH_READLINE" >> $GITHUB_ENV
+       echo "LDFLAGS=-L/usr/lib -L/usr/lib/x86_64-linux-gnu -lbz2 -lreadline -lz -lssl -lcrypto" >> $GITHUB_ENV
+       echo "PYTHON_CONFIGURE_OPTS=--enable-unicode=ucs4 --enable-shared --with-system-ffi --with-system-zlib" >> $GITHUB_ENV
+
+       # 清理临时文件与权限配置（优化权限为 755，保留容错）
+       chmod -R 755 /home/runner/.buildozer
+       export BUILDOZER_NO_CACHE=1
+       # 对齐 NDK 25b（若需 25c 同步修改）
+       echo "ANDROID_NDK_ROOT=/home/runner/.buildozer/android/platform/android-ndk-r25b" >> $GITHUB_ENV
  
       - name: Build APK
         run: buildozer android debug deploy run -v
