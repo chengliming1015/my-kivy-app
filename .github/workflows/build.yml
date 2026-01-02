@@ -1,14 +1,29 @@
-name: Build Kivy Android APK
-on: [workflow_dispatch]
+name: Build Kivy APK
+on: [workflow_dispatch]  # 仅手动触发，最稳
 jobs:
-  build:
+  build-android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y openjdk-11-jdk ant gradle python3-pip wget unzip
-      - run: pip install --upgrade pip && pip install buildozer==1.5.0 kivy==2.3.0 cython==0.29.36
-      - run: buildozer android debug -v
-      - uses: actions/upload-artifact@v4
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 安装核心系统依赖（官方必装，极简）
+        run: sudo apt-get update && sudo apt-get install -y openjdk-11-jdk ant gradle python3-pip wget unzip
+
+      - name: 安装Python依赖（锁定最新稳定版）
+        run: pip install --upgrade pip && pip install buildozer==1.5.0 kivy==2.3.0 cython==0.29.36
+
+      - name: 一键打包APK（带网络重试，解决Errno 101）
+        run: |
+          # 最多重试3次，解决GitHub节点临时网络波动
+          for i in 1 2 3; do
+            buildozer android debug -v && break  # 核心命令不变，成功则跳出循环
+            echo "第 $i 次打包失败（网络问题），5秒后重试..."
+            sleep 5  # 延迟5秒，避免频繁请求被限流
+          done
+
+      - name: 上传APK成品
+        uses: actions/upload-artifact@v4
         with:
           name: Kivy-Official-APK
           path: bin/*.apk
