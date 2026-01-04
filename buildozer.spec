@@ -33,7 +33,7 @@ android.api = 33
 android.minapi = 24
 
 # NDK 版本（指定稳定版本，避免自动下载时版本兼容问题）
-android.ndk = 23b
+android.ndk = 25b
 
 # Android 架构（仅保留 2 种主流架构，减小 APK 体积，适配绝大多数设备）
 android.archs = arm64-v8a, armeabi-v7a
