@@ -1,0 +1,5 @@
+# 终端执行（进入项目目录）
+touch requirements.txt
+git add requirements.txt
+git commit -m "添加空的requirements.txt，适配GitHub Actions缓存"
+git push origin main
