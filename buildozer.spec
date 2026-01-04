@@ -24,9 +24,6 @@ android.accept_sdk_license = True
 android.api = 33
 android.minapi = 28
 
-# NDK 版本（指定稳定版本，避免自动下载时版本兼容问题）
-android.ndk = 25b
-
 # CPU架构（建议只使用arm64-v8a，减小体积）
 android.archs = arm64-v8a
 
