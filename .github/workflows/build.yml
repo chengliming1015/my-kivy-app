@@ -115,6 +115,9 @@ jobs:
         # 验证安装
         buildozer --version
         echo "✅ Buildozer 及其依赖安装完成"
+
+    - name: 清理旧构建缓存（关键步骤，必须添加）
+      run: buildozer android clean
         
     # 8. 构建 Android APK（保留日志输出，优化构建命令）
     - name: 构建 Android APK
