@@ -31,8 +31,6 @@ jobs:
 
     - run: buildozer --help
 
-    - run: buildozer init
-
     - name: Modify spec & Download SDK/NDK/p4a (优化配置，仅适配 APK)
       run: |
         # 1. 自动接受 Android SDK 许可（必备，无界面环境不卡顿）
