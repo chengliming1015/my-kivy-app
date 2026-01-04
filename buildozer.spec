@@ -16,17 +16,18 @@ version = 0.1
 android.numeric_version = 1
 
 # 核心依赖（仅保留生成 APK 必需的依赖，python3 是基础，kivy 是 UI 框架）
-requirements = python3,kivy
+requirements = python3,kivy==2.1.0
 
 # 自动接受 Android SDK 许可（关键：自动化打包无需手动确认，避免卡顿）
 android.accept_sdk_license = True
 
 # 目标 Android API 和最低兼容 API（选稳定版本，兼容大多数设备）
-android.api = 33
-android.minapi = 28
+android.api = 28
+android.build_tools = 28.0.3
+android.minapi = 21
 
 # CPU架构（建议只使用arm64-v8a，减小体积）
-android.archs = arm64-v8a
+android.archs = armeabi-v7a
 
 [buildozer]
 # 日志级别（2 = 调试模式，方便排查 APK 打包问题，后续可改为 1 简化日志）
