@@ -2,9 +2,10 @@
 
 [app]
 # 安卓安装包的基本信息(必填项)
-title = 明哥工作室
+title = 明哥
 package.name = chengliming
 package.domain = org.test
+android.icon = ./chengliming.png
 
 # 源代码路径配置(必填项)
 source.dir = .
