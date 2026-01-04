@@ -69,21 +69,19 @@ jobs:
         # 清理apt缓存，减少磁盘占用
         sudo apt-get clean
         
-    # 4. 配置 Java 环境变量（关键：Android构建工具依赖 JAVA_HOME）
+    # 4. 配置 JAVA_HOME 环境变量（极简版本，保留核心功能+添加验证）
     - name: 配置 JAVA_HOME 环境变量
       run: |
         set -euo pipefail
-        # 查找openjdk-17的安装路径
-        JAVA_PATH=$(update-alternatives --list java | grep openjdk-17 | sed 's/\/bin\/java//')
-        # 配置到全局环境，生效当前会话
+        JAVA_PATH="/usr/lib/jvm/java-17-openjdk-amd64"
         echo "JAVA_HOME=$JAVA_PATH" >> $GITHUB_ENV
         echo "export JAVA_HOME=$JAVA_PATH" >> ~/.bashrc
         echo "export PATH=\$JAVA_HOME/bin:\$PATH" >> ~/.bashrc
         source ~/.bashrc
-        # 验证Java环境
+        # 添加Java版本验证，确认环境生效
         java -version
-        echo "✅ JAVA_HOME 配置完成：$JAVA_PATH"
-        
+        echo "✅ JAVA_HOME 配置完成，Java环境生效"
+  
     # 5. 设置 Python 环境
     - name: 设置 Python 3.9
       uses: actions/setup-python@v4
@@ -91,7 +89,7 @@ jobs:
         python-version: '3.9'
         cache: 'pip'  # 启用pip缓存，加速后续依赖安装
         
-    # 6. 缓存 Buildozer 与 Android 编译环境（核心优化：大幅缩短后续构建时间）
+    # 6. 缓存 Buildozer 与 Android 编译环境（修复：移除requirements.txt引用）
     - name: 缓存 Python 依赖与 Buildozer 编译环境
       uses: actions/cache@v3
       with:
@@ -99,7 +97,8 @@ jobs:
           ~/.cache/pip
           ~/.buildozer
           ./bin
-        key: ${{ runner.os }}-python3.9-buildozer1.5.0-${{ hashFiles('requirements.txt') }}
+        # 修复：移除${{ hashFiles('requirements.txt') }}，简化缓存key
+        key: ${{ runner.os }}-python3.9-buildozer1.5.0
         restore-keys: |
           ${{ runner.os }}-python3.9-buildozer1.5.0-
           
