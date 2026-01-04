@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 120  # 增加超时时间，因为构建需要较长时间
     defaults:
       run:
@@ -56,7 +56,7 @@ jobs:
           zlib1g-dev \
           libncurses5-dev \
           libncursesw5-dev \
-          libtinfo5 \
+          libtinfo6 \
           libffi-dev \
           libssl-dev \
           libsqlite3-dev \
