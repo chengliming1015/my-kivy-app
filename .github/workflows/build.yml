@@ -131,6 +131,6 @@ jobs:
       with:
         name: kivy-apk-build-result
         path: |
-          ./bin/*.apk  # 上传所有生成的APK文件
-          ./build.log  # 上传构建日志，用于排查失败问题
+          ./bin/*.apk
+          ./build.log
         retention-days: 7  # 产物保留7天，可根据需求调整
