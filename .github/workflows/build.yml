@@ -14,12 +14,22 @@ jobs:
     # 1. 获取代码
     - name: 检出代码
       uses: actions/checkout@v6
+
+
+    - name: 安装系统依赖
+      run: |
+       sudo apt-get update
+       sudo apt-get install -y \
+       build-essential \       
+       autoconf \            
+       automake \ 
       
     # 2. 设置 Python 环境
     - name: 设置 Python
       uses: actions/setup-python@v6
       with:
         python-version: '3.9'
+        cache: 'pip'  # 启用 pip 缓存
         
     # 3. 安装构建工具
     - name: 安装 Buildozer
@@ -27,6 +37,9 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential git openjdk-11-jdk
         pip install buildozer cython==0.29.33
+        pip install "cython==0.29.36"
+        pip install "buildozer==1.5.0"
+        pip install "python-for-android==2023.08.24"
         
     # 4. 构建 APK
     - name: 构建 Android APK
