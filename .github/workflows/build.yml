@@ -3,50 +3,61 @@ on: [push, pull_request]
 env:
   PYTHONFORANDROID_PREREQUISITES_INSTALL_INTERACTIVE: 0
 
-name: Android Integration
+name: Android APK Build Only
+
 jobs:
-  Integration:
-    strategy:
-      matrix:
-        os:
-          - 'ubuntu-latest'
-          - 'macos-latest'
-    runs-on: ${{ matrix.os }}
+  # 简化任务名称，聚焦 APK 打包
+  APK-Build:
+    # 优化：仅保留 ubuntu-latest（Android APK 打包最稳定、最快，移除 macos-latest 减少冗余）
+    # 若需保留跨平台，可保留 matrix 配置，见后续补充
+    runs-on: ubuntu-latest
     steps:
-    - name: Setup Python
+    - name: Setup Python (3.10 稳定版，替代 3.x 更可控)
       uses: actions/setup-python@v6
       with:
-        python-version: '3.x'
-    - name: Setup Java
+        python-version: '3.10'
+
+    - name: Setup Java (17 稳定版，适配 Android SDK)
       uses: actions/setup-java@v5
       with:
         java-version: '17'
         distribution: 'temurin'
+
     - uses: actions/checkout@v6
-    - name: Setup environment
+
+    - name: Setup Buildozer Environment
       run: |
         pip install .
+
     - run: buildozer --help
+
     - run: buildozer init
-    - name: SDK, NDK, and p4a download
+
+    - name: Modify spec & Download SDK/NDK/p4a (优化配置，仅适配 APK)
       run: |
+        # 1. 自动接受 Android SDK 许可（必备，无界面环境不卡顿）
         sed -i.bak "s/# android.accept_sdk_license = False/android.accept_sdk_license = True/" buildozer.spec
-        sed -i.bak "s/#p4a.branch = master/p4a.branch = develop/" buildozer.spec
+        # 2. p4a 分支改回 master（稳定版，避免 develop 分支兼容性问题，利于 APK 打包）
+        sed -i.bak "s/#p4a.branch = master/p4a.branch = master/" buildozer.spec
+        # 3. 新增：明确指定调试版打包格式为 APK（避免默认生成 AAB）
+        sed -i.bak "s/# android.debug_artifact = apk/android.debug_artifact = apk/" buildozer.spec
+        # 4. 触发依赖自动下载，提前获取 SDK/NDK/p4a，避免打包时超时
         buildozer android p4a -- --help
-    # Install OS specific dependencies
-    - name: Install Linux dependencies
+
+    - name: Install Linux Dependencies (仅 Ubuntu 需，保持不变)
       if: runner.os == 'Linux'
-      # Required by some p4a recipes, but not
-      # installed by p4a on Linux.
       run: |
         sudo apt update
         sudo apt -y install automake libltdl-dev
-    - name: Debug Build
+
+    - name: Build Debug APK (核心步骤，仅生成 APK，移除 AAB 流程)
       run: |
-        touch main.py
-        buildozer android debug
-    - name: Release Build (aab)
-      run: |
-        touch main.py
-        export BUILDOZER_ALLOW_ORG_TEST_DOMAIN=1
-        buildozer android release
+        touch main.py  # 创建空入口文件，满足 Buildozer 打包要求
+        buildozer android debug  # 仅执行调试版 APK 打包，无需发布版 AAB 命令
+
+    - name: Upload APK Artifact (关键优化：保留 APK 产物，避免环境销毁丢失)
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-debug-apk
+        path: ./bin/  # 上传 bin 目录下的所有 APK 文件
+        retention-days: 7  # 产物保留 7 天，可按需调整
