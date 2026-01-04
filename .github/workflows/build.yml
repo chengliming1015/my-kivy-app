@@ -8,47 +8,188 @@ on:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 45  # 防止无限运行
+    timeout-minutes: 120  # 增加超时时间，因为构建需要较长时间
     
     steps:
     # 1. 获取代码
     - name: 检出代码
-      uses: actions/checkout@v6
-
-
-    - name: 安装系统依赖
-      run: |
-       sudo apt-get update
-       sudo apt-get install -y \
-       build-essential \       
-       autoconf \            
-       automake \ 
+      uses: actions/checkout@v4  # 使用 v4 而不是 v6，更稳定
       
-    # 2. 设置 Python 环境
-    - name: 设置 Python
-      uses: actions/setup-python@v6
-      with:
-        python-version: '3.9'
-        cache: 'pip'  # 启用 pip 缓存
-        
-    # 3. 安装构建工具
-    - name: 安装 Buildozer
+    # 2. 安装完整的系统依赖（一次性安装所有必需包）
+    - name: 安装完整系统依赖
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential git openjdk-11-jdk
-        pip install buildozer cython==0.29.33
+        sudo apt-get install -y \
+          build-essential \
+          git \
+          wget \
+          curl \
+          zip \
+          unzip \
+          tar \
+          openjdk-17-jdk \      # 使用 JDK 17，兼容性更好
+          # 解决 autoconf 问题的关键包
+          autoconf \
+          automake \
+          libtool \
+          pkg-config \
+          cmake \
+          ninja-build \
+          # Python 开发环境
+          python3-dev \
+          python3-pip \
+          python3-venv \
+          # 必需的系统库
+          zlib1g-dev \
+          libncurses5-dev \
+          libncursesw5-dev \
+          libtinfo5 \
+          libffi-dev \
+          libssl-dev \
+          libsqlite3-dev \
+          sqlite3 \
+          # 其他编译工具
+          swig \
+          yasm \
+          nasm \
+          bison \
+          flex
+        
+    # 3. 设置 Python 环境
+    - name: 设置 Python
+      uses: actions/setup-python@v4  # 使用 v4 而不是 v6
+      with:
+        python-version: '3.9'
+        
+    # 4. 安装 Buildozer 和相关工具
+    - name: 安装 Buildozer 和依赖
+      run: |
+        # 升级 pip
+        python -m pip install --upgrade pip
+        
+        # 安装特定版本的依赖（避免兼容性问题）
         pip install "cython==0.29.36"
         pip install "buildozer==1.5.0"
         pip install "python-for-android==2023.08.24"
         
-    # 4. 构建 APK
+        # 验证安装
+        buildozer --version || echo "Buildozer 安装失败"
+        
+    # 5. 准备构建环境
+    - name: 配置构建环境
+      run: |
+        # 清理旧缓存
+        rm -rf ~/.buildozer 2>/dev/null || true
+        
+        # 设置环境变量
+        echo "BUILDOZER_ACCEPT_SDK_LICENSE=1" >> $GITHUB_ENV
+        echo "BUILDOZER_ALLOW_ROOT=1" >> $GITHUB_ENV
+        
+        # 如果不存在 buildozer.spec，创建最小化版本
+        if [ ! -f "buildozer.spec" ]; then
+          echo "创建默认的 buildozer.spec 文件..."
+          cat > buildozer.spec << 'EOF'
+[app]
+title = My Kivy App
+package.name = myapp
+package.domain = org.test
+source.dir = .
+source.include_exts = py,png,jpg,kv,ttf,json
+version = 1.0
+requirements = python3,kivy
+orientation = portrait
+fullscreen = 0
+android.accept_sdk_license = True
+android.api = 33
+android.minapi = 28
+android.archs = arm64-v8a
+android.numeric_version = $(date +%s | cut -c 3-10)
+
+[buildozer]
+log_level = 2
+warn_on_root = 1
+EOF
+          echo "✅ 已创建 buildozer.spec 文件"
+        else
+          echo "✅ 已存在 buildozer.spec 文件"
+          
+          # 确保使用 archs 而不是 arch
+          sed -i 's/android\.arch = /android.archs = /g' buildozer.spec 2>/dev/null || true
+          
+          # 确保接受许可证
+          if ! grep -q "android.accept_sdk_license" buildozer.spec; then
+            sed -i '/^\[app\]/a android.accept_sdk_license = True' buildozer.spec
+            echo "✅ 已添加 android.accept_sdk_license"
+          fi
+        fi
+        
+    # 6. 构建 APK
     - name: 构建 Android APK
       run: |
-        buildozer android debug
+        echo "开始构建 APK，这可能需要 30-60 分钟..."
         
-    # 5. 上传生成的 APK
+        # 运行构建，保存日志
+        buildozer android debug 2>&1 | tee build.log
+        
+        # 检查构建结果
+        if [ $? -eq 0 ] && ls bin/*.apk 1> /dev/null 2>&1; then
+          echo "✅ APK 构建成功！"
+          echo "生成的 APK 文件："
+          ls -lh bin/*.apk
+        else
+          echo "❌ APK 构建失败"
+          echo "查看最后 50 行日志："
+          tail -50 build.log
+          echo "常见错误分析："
+          grep -i "error\|fail\|cannot\|no such" build.log | head -10 || true
+          exit 1
+        fi
+        
+    # 7. 重命名 APK 文件（便于区分）
+    - name: 重命名 APK 文件
+      if: success()
+      run: |
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        if ls bin/*.apk 1> /dev/null 2>&1; then
+          for apk in bin/*.apk; do
+            BASENAME=$(basename "$apk" .apk)
+            NEW_NAME="${BASENAME}_${TIMESTAMP}.apk"
+            mv "$apk" "bin/$NEW_NAME"
+            echo "✅ APK 重命名为: $NEW_NAME"
+          done
+        fi
+        
+    # 8. 上传生成的 APK
     - name: 上传 APK 文件
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v4  # 使用 v4 而不是 v6
       with:
         name: myapp-apk
         path: bin/*.apk
+        if-no-files-found: error
+        
+    # 9. 上传构建日志（便于调试）
+    - name: 上传构建日志
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-logs
+        path: build.log
+        retention-days: 7
+        
+    # 10. 显示构建结果
+    - name: 显示构建结果
+      if: always()
+      run: |
+        if [ -f "build.log" ]; then
+          if grep -q "✅ APK 构建成功" build.log; then
+            echo "🎉 构建成功完成！"
+            echo ""
+            echo "📱 下载 APK："
+            echo "1. 点击右侧 'Summary' 标签"
+            echo "2. 在 'Artifacts' 部分找到 'myapp-apk'"
+            echo "3. 点击下载"
+          else
+            echo "❌ 构建失败"
+            echo "查看 'build-logs' 获取详细信息"
+          fi
+        fi
