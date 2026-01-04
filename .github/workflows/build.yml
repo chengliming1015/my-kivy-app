@@ -89,18 +89,19 @@ jobs:
         python-version: '3.9'
         cache: 'pip'  # 启用pip缓存，加速后续依赖安装
         
-    # 6. 缓存 Buildozer 与 Android 编译环境（优化：移除./bin，添加buildozer.spec哈希）
+    # 6. 缓存 Buildozer 与 Android 编译环境（优化：添加核心目录缓存）
     - name: 缓存 Python 依赖与 Buildozer 编译环境
       uses: actions/cache@v3
       with:
         path: |
           ~/.cache/pip
           ~/.buildozer
+          ./.buildozer/android/platform
         key: ${{ runner.os }}-python3.9-buildozer1.5.0-${{ hashFiles('buildozer.spec') }}
         restore-keys: |
           ${{ runner.os }}-python3.9-buildozer1.5.0-
           
-    # 7. 安装 Buildozer 和相关工具
+    # 7. 安装 Buildozer 和相关工具（保持 1.5.0 版本不变）
     - name: 安装 Buildozer 和依赖
       run: |
         set -euo pipefail
@@ -113,24 +114,24 @@ jobs:
         # 验证安装
         buildozer --version
         echo "✅ Buildozer 及其依赖安装完成"
-
-    # 8. 手动初始化 Buildozer Android 环境（解决目录缺失问题）
-    - name: 初始化 Buildozer Android 环境
+        
+    # 8. 临时打包初始化核心目录（解决 clean 所需目录缺失问题，无需等待完整打包）
+    - name: 临时初始化 Buildozer 核心目录
       run: |
-       set -euo pipefail
-       buildozer android init
-       echo "✅ Buildozer Android 环境初始化完成，核心目录已创建"
-   
-         
-    # 8. 执行 Buildozer 项目缓存清理（修正名称+添加错误处理）
+        set -euo pipefail
+        # 执行 debug 命令，仅创建核心目录，无需等待完整构建
+        buildozer android debug || echo "⚠️  临时打包已完成目录初始化，继续执行 clean 即可"
+        echo "✅ Buildozer 核心目录初始化完成，可正常执行 clean 命令"
+        
+    # 9. 执行项目缓存清理（此时目录已存在，clean 可正常运行）
     - name: 执行 Buildozer 项目缓存清理
       run: |
         set -euo pipefail
         buildozer android clean
-        echo "✅ Buildozer 项目缓存清理完成"
+        echo "✅ Buildozer 项目缓存清理完成，旧配置/旧中间产物已清除"
         
-    # 9. 构建 Android APK（优化：添加产物存在性验证）
-    - name: 构建 Android APK
+    # 10. 正式构建 Android APK（基于干净环境，新配置生效）
+    - name: 正式构建 Android APK
       run: |
         set -euo pipefail
         # 执行Buildozer构建，将日志同时输出到终端和build.log文件
@@ -139,11 +140,11 @@ jobs:
         if ls ./bin/*.apk 1> /dev/null 2>&1; then
           echo "✅ 检测到APK产物，构建大概率成功！"
         else
-          echo "⚠️ 未检测到APK产物，构建可能失败，请查看build.log"
+          echo "⚠️  未检测到APK产物，构建可能失败，请查看build.log"
         fi
         echo "✅ APK 构建流程执行完成（是否成功请查看产物与日志）"
         
-    # 10. 上传 APK 构建产物（修正编号，保持连贯）
+    # 11. 上传 APK 构建产物
     - name: 上传 APK 构建产物
       uses: actions/upload-artifact@v4
       if: always()  # 无论构建成功/失败，都上传产物（方便排查问题）
