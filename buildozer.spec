@@ -2,8 +2,8 @@
 
 [app]
 # 安卓安装包的基本信息(必填项)
-title = My Application
-package.name = myapp
+title = 明哥工作室
+package.name = chengliming
 package.domain = org.test
 
 # 源代码路径配置(必填项)
