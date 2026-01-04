@@ -1,180 +1,142 @@
 from kivy.app import App
 from kivy.uix.widget import Widget
-from kivy.uix.label import Label
-from kivy.uix.floatlayout import FloatLayout
-from kivy.uix.boxlayout import BoxLayout
+from kivy.graphics import Color, Rectangle, Ellipse
 from kivy.clock import Clock
-from kivy.graphics import Color, Ellipse
 from kivy.core.window import Window
-from kivy.utils import get_color_from_hex
-import random
-import math
+from random import random, randint, uniform
 
+# 配置窗口大小（可选，可自行调整）
+Window.size = (800, 600)
+# 窗口标题
+Window.title = "欢迎姜文斌 - 蓝色背景烟花秀"
 
-# 粒子类：管理烟花爆炸后的单个粒子（保留核心逻辑，优化粒子数量让满屏更饱满）
-class Particle:
+class FireworkParticle:
+    """烟花粒子类，负责单个粒子的属性和更新"""
     def __init__(self, x, y):
-        # 粒子初始位置（烟花爆炸中心）
+        # 粒子初始位置
         self.x = x
         self.y = y
-
-        # 随机生成粒子爆炸方向（0-360度）
-        angle = random.uniform(0, 2 * math.pi)
-        # 随机生成粒子爆炸速度（微调范围，让满屏烟花更均匀）
-        speed = random.uniform(1.5, 4.5)
-
-        # 分解为x、y方向的速度
-        self.vx = math.cos(angle) * speed
-        self.vy = math.sin(angle) * speed
-
-        # 随机生成烟花颜色（暖色调为主，保留透明度衰减）
-        self.r = random.uniform(0.8, 1.0)  # 红
-        self.g = random.uniform(0.2, 0.9)  # 绿
-        self.b = random.uniform(0.0, 0.8)  # 蓝
-        self.a = 1.0  # 透明度（逐渐衰减）
-
-        # 粒子生命周期（帧数，微调让效果更持久）
-        self.life = random.randint(25, 55)
-        # 粒子大小
-        self.size = random.uniform(1.8, 3.8)
-
-        # 重力系数（模拟粒子下落）
-        self.gravity = 0.02
+        # 粒子初始速度（随机方向，有向上的初速度）
+        self.vx = uniform(-3, 3)
+        self.vy = uniform(2, 5)
+        # 粒子大小（随机）
+        self.size = uniform(1, 3)
+        # 粒子颜色（随机暖色调，模拟烟花）
+        self.r = random()
+        self.g = random() * 0.7  # 降低绿色值，更贴近真实烟花
+        self.b = random() * 0.5  # 降低蓝色值，避免和背景冲突
+        # 粒子生命周期（逐渐消失）
+        self.life = 100
+        self.alpha = 1.0
 
     def update(self):
-        """更新粒子的位置、速度、生命周期和透明度"""
-        # 应用重力（y方向速度衰减，模拟下落）
-        self.vy -= self.gravity
-
-        # 更新粒子位置
+        """更新粒子的位置、生命周期和透明度"""
+        # 加入重力效果，让粒子逐渐下落
+        self.vy -= 0.05
+        # 更新位置
         self.x += self.vx
         self.y += self.vy
-
-        # 生命周期倒计时
+        # 更新生命周期和透明度
         self.life -= 1
+        self.alpha = self.life / 100
+        # 确保透明度不小于0
+        if self.alpha < 0:
+            self.alpha = 0
 
-        # 透明度随生命周期衰减（逐渐消失）
-        self.a = max(0, self.life / 60)
+class FireworkWidget(Widget):
+    """主控件，负责绘制背景、文字和烟花"""
+    def __init__(self, **kwargs):
+        super(FireworkWidget, self).__init__(**kwargs)
+        # 初始化烟花粒子列表
+        self.firework_particles = []
+        # 绘制蓝色背景
+        self._draw_background()
+        # 调度定时器：持续生成烟花（每0.3秒生成一组）
+        Clock.schedule_interval(self._spawn_firework, 0.3)
+        # 调度定时器：持续更新和绘制烟花（每帧更新）
+        Clock.schedule_interval(self._update_fireworks, 1/60)
 
+    def _draw_background(self):
+        """绘制蓝色背景"""
+        with self.canvas.before:
+            # 蓝色背景（可调整RGB值修改深浅，当前为天蓝色）
+            Color(0.1, 0.3, 0.6, 1.0)
+            self.background = Rectangle(pos=self.pos, size=self.size)
+            # 绑定背景大小到窗口大小，窗口缩放时背景同步更新
+            self.bind(pos=self._update_background, size=self._update_background)
 
-# 烟花类：管理单个烟花的爆炸和粒子集合（修改爆炸位置实现满屏效果）
-class Firework:
-    def __init__(self):
-        # 优化：爆炸位置覆盖整个屏幕（0到窗口宽/高，不再限制中间区域）
-        self.x = random.uniform(0, Window.width)  # 横向满屏
-        self.y = random.uniform(0, Window.height)  # 纵向满屏
+    def _update_background(self, *args):
+        """更新背景大小（窗口缩放时触发）"""
+        self.background.pos = self.pos
+        self.background.size = self.size
 
-        # 微调粒子数量（让满屏烟花更饱满，不杂乱）
-        self.particles = [Particle(self.x, self.y) for _ in range(random.randint(45, 95))]
+    def _spawn_firework(self, *args):
+        """生成一组新的烟花粒子（随机位置）"""
+        # 随机选择烟花生成位置（窗口内）
+        spawn_x = randint(100, Window.width - 100)
+        spawn_y = randint(100, Window.height - 300)
+        # 生成一组粒子（每组50-80个，保证烟花效果饱满）
+        for _ in range(randint(50, 80)):
+            particle = FireworkParticle(spawn_x, spawn_y)
+            self.firework_particles.append(particle)
 
-    def update(self):
-        """更新所有粒子的状态，返回是否还有存活粒子"""
-        for particle in self.particles:
+    def _update_fireworks(self, *args):
+        """更新烟花粒子状态并重新绘制"""
+        # 清空之前的烟花绘制
+        self.canvas.after.clear()
+
+        # 绘制“欢迎姜文斌”文字（居中显示，白色）
+        with self.canvas.after:
+            Color(1.0, 1.0, 1.0, 1.0)  # 白色
+            # 文字绘制（Kivy默认字体，若需优化中文字体可额外配置）
+            self._draw_text()
+
+        # 更新并绘制所有烟花粒子
+        alive_particles = []
+        for particle in self.firework_particles:
             particle.update()
+            # 只保留存活的粒子（生命周期>0）
+            if particle.life > 0:
+                alive_particles.append(particle)
+                # 绘制单个粒子
+                with self.canvas.after:
+                    Color(particle.r, particle.g, particle.b, particle.alpha)
+                    Ellipse(
+                        pos=(particle.x, particle.y),
+                        size=(particle.size, particle.size)
+                    )
+        # 更新粒子列表，移除死亡粒子（节省内存）
+        self.firework_particles = alive_particles
 
-        # 过滤掉生命周期结束的粒子
-        self.particles = [p for p in self.particles if p.life > 0]
+    def _draw_text(self):
+        """绘制居中文字“欢迎姜文斌”"""
+        # 简化文字绘制（若需更美观的文字样式，可使用Label控件，效果一致）
+        from kivy.graphics import PushMatrix, PopMatrix, Translate
+        from kivy.core.text import Label as CoreLabel
 
-        # 返回是否还有存活粒子（无存活则烟花消失）
-        return len(self.particles) > 0
-
-
-# 烟花画布：负责绘制和管理所有烟花（保留核心绘制逻辑）
-class FireworkCanvas(Widget):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # 烟花集合
-        self.fireworks = []
-
-        # 定时刷新动画（60帧/秒）
-        Clock.schedule_interval(self.update, 1 / 60)
-
-        # 定时生成新烟花（微调间隔，让满屏烟花更连贯）
-        self.schedule_new_firework()
-
-    def schedule_new_firework(self):
-        """定时生成新烟花，递归调用实现持续生成"""
-        self.add_firework()
-        # 随机间隔（400-900毫秒）生成下一个烟花，提升满屏连贯性
-        Clock.schedule_once(lambda dt: self.schedule_new_firework(), random.uniform(0.4, 0.9))
-
-    def add_firework(self):
-        """添加一个新烟花"""
-        self.fireworks.append(Firework())
-
-    def update(self, dt):
-        """更新所有烟花状态并重新绘制"""
-        # 清空画布
-        self.canvas.clear()
-
-        # 迭代更新所有烟花，过滤掉已消失的烟花
-        active_fireworks = []
-        for firework in self.fireworks:
-            if firework.update():
-                active_fireworks.append(firework)
-                # 绘制当前烟花的所有粒子
-                self.draw_firework(firework)
-        self.fireworks = active_fireworks
-
-    def draw_firework(self, firework):
-        """绘制单个烟花的所有粒子"""
-        for particle in firework.particles:
-            with self.canvas:
-                # 设置粒子颜色（包含透明度衰减）
-                Color(particle.r, particle.g, particle.b, particle.a)
-                # 绘制粒子（椭圆，模拟圆形光点）
-                Ellipse(
-                    pos=(particle.x - particle.size / 2, particle.y - particle.size / 2),
-                    size=(particle.size, particle.size)
-                )
-
-
-# 主布局：叠加烟花画布和垂直文字（实现文字与烟花共存）
-class MainLayout(FloatLayout):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        # 1. 添加烟花画布（占满整个屏幕）
-        self.firework_canvas = FireworkCanvas()
-        self.add_widget(self.firework_canvas)
-
-        # 2. 创建垂直布局（实现文字从上到下排版）
-        self.text_layout = BoxLayout(
-            orientation='vertical',  # 垂直排列（从上到下）
-            spacing=15,  # 字与字之间的间距
-            size_hint=(None, None),  # 固定布局大小，不随窗口拉伸
-            pos_hint={'center_x': 0.5, 'center_y': 0.5}  # 居中显示（可调整位置）
+        # 配置核心文字标签
+        core_label = CoreLabel(
+            text="欢迎姜文斌",
+            font_size=48,
+            color=(1, 1, 1, 1)
         )
+        core_label.refresh()
 
-        # 3. 定义要显示的文字（拆分单个字符，实现从上到下每个字一行）
-        welcome_text = "欢迎姜文斌"
+        # 文字居中计算
+        text_x = (Window.width - core_label.texture_size[0]) / 2
+        text_y = (Window.height - core_label.texture_size[1]) / 2
 
-        # 4. 为每个字符创建Label，添加到垂直布局中
-        for char in welcome_text:
-            label = Label(
-                text=char,
-                font_size=48,  # 字体大小（可调整）
-                bold=True,  # 加粗显示
-                color=get_color_from_hex("#FFFFFF"),  # 白色文字，与烟花形成对比
-                shadow_color=(0, 0, 0, 0.8),  # 文字阴影，提升可读性
-                shadow_offset=(2, -2)  # 阴影偏移量
-            )
-            self.text_layout.add_widget(label)
+        # 绘制文字到画布
+        with self.canvas.after:
+            PushMatrix()
+            Translate(text_x, text_y)
+            Rectangle(texture=core_label.texture, size=core_label.texture_size)
+            PopMatrix()
 
-        # 5. 将文字布局添加到主布局中
-        self.add_widget(self.text_layout)
-
-
-# 烟花应用主类（优化布局，保留窗口设置）
 class FireworkApp(App):
+    """Kivy应用主类"""
     def build(self):
-        # 设置窗口大小
-        Window.size = (800, 600)
-        # 设置窗口标题
-        self.title = "欢迎姜文斌 - 满屏烟花效果"
-        # 返回主布局（包含烟花和文字）
-        return MainLayout()
-
+        return FireworkWidget()
 
 if __name__ == "__main__":
     FireworkApp().run()
