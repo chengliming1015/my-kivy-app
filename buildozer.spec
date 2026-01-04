@@ -2,7 +2,7 @@
 
 [app]
 # 安卓安装包的基本信息(必填项)
-title = 明哥
+title = 文斌工作室
 package.name = chengliming
 package.domain = org.test
 icon.filename = ./chengliming.png
