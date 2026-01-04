@@ -28,7 +28,7 @@ android.minapi = 28
 android.ndk = 25b
 
 # CPU架构（建议只使用arm64-v8a，减小体积）
-android.arch = arm64-v8a
+android.archs = arm64-v8a
 
 [buildozer]
 # 日志级别（2 = 调试模式，方便排查 APK 打包问题，后续可改为 1 简化日志）
