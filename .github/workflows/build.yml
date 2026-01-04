@@ -1,103 +1,52 @@
-name: Build Kivy APK
-on: [workflow_dispatch]
+on: [push, pull_request]
+
+env:
+  PYTHONFORANDROID_PREREQUISITES_INSTALL_INTERACTIVE: 0
+
+name: Android Integration
 jobs:
-  build-android:
-    runs-on: ubuntu-22.04
-    env:
-      ANDROID_ACCEPT_LICENSES: yes
-      ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
-      ANDROID_SDK_ROOT: /home/runner/.buildozer/android/platform/android-sdk
-      CMDLINE_TOOLS_VERSION: 10406996
-      JAVA_HOME: /usr/lib/jvm/temurin-17-jdk-amd64
-      # 新增：锁定 Build-Tools 版本，方便显式安装
-      ANDROID_BUILD_TOOLS_VERSION: 34.0.0
+  Integration:
+    strategy:
+      matrix:
+        os:
+          - 'ubuntu-latest'
+          - 'macos-latest'
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: 拉取代码
-        uses: actions/checkout@v4
-
-      - name: 缓存Buildozer依赖（解决大文件下载网络问题）
-        uses: actions/cache@v3
-        with:
-          path: ~/.buildozer
-          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
-          restore-keys: |
-            ${{ runner.os }}-buildozer-
-
-      - name: 安装完整系统依赖（Java 17 + 必备工具）
-        run: |
-          sudo apt-get update
-          sudo apt-get remove -y openjdk-11-jdk
-          sudo apt-get install -y openjdk-17-jdk ant gradle python3-pip wget unzip \
-          libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
-          pkg-config libgl1-mesa-dev libgles2-mesa-dev python3-setuptools
-          sudo update-alternatives --set java /usr/lib/jvm/temurin-17-jdk-amd64/bin/java
-          sudo update-alternatives --set javac /usr/lib/jvm/temurin-17-jdk-amd64/bin/javac
-
-      - name: 验证 Java 版本（确保切换到 17）
-        run: |
-          java -version
-          javac -version
-          echo "JAVA_HOME: $JAVA_HOME"
-
-      - name: 安装Python依赖（锁定版本，确保安装成功）
-        run: |
-          pip install --upgrade pip
-          pip install buildozer==1.5.0 kivy==2.3.0 cython==0.29.36
-
-      - name: 补全目录权限 + 清理旧残留 + 安装 cmdline-tools + 创建软链接
-        run: |
-          chmod -R 777 . && mkdir -p bin
-          # 1. 清理旧的 .buildozer 目录，强制重新下载完整工具链
-          rm -rf ~/.buildozer
-          # 2. 提前创建所有必要目录（包括 build-tools，避免权限不足）
-          mkdir -p ~/.buildozer/android/platform/android-sdk/{cmdline-tools/latest,tools/bin,build-tools/${{ env.ANDROID_BUILD_TOOLS_VERSION }}}
-          # 3. 下载并解压 Android SDK cmdline-tools（包含 sdkmanager）
-          wget https://dl.google.com/android/repository/commandlinetools-linux-${{ env.CMDLINE_TOOLS_VERSION }}_latest.zip -O cmdline-tools.zip
-          unzip cmdline-tools.zip -d ~/.buildozer/android/platform/android-sdk/cmdline-tools/
-          # 4. 重命名目录，适配标准 cmdline-tools 结构
-          mv ~/.buildozer/android/platform/android-sdk/cmdline-tools/cmdline-tools/* ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/
-          # 5. 核心：创建软链接，把新路径的 sdkmanager 映射到 Buildozer 认的旧路径
-          ln -s ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager \
-          ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager
-          # 6. 赋予 sdkmanager 执行权限（新旧路径都要兜底）
-          chmod +x ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager
-          chmod +x ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager
-          # 7. 清理压缩包
-          rm -rf cmdline-tools.zip
-
-      - name: 核心兜底：显式调用 sdkmanager 安装 Build-Tools + platform-tools（强制生成 build-tools 文件夹）
-        run: |
-          # 1. 导出环境变量，确保 sdkmanager 自动接受许可证
-          export ANDROID_ACCEPT_LICENSES=yes
-          export PATH=$PATH:~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin
-          export JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64
-          # 2. 显式安装 platform-tools（sdkmanager 运行必需）
-          ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager --sdk_root=${{ env.ANDROID_HOME }} "platform-tools"
-          # 3. 显式安装 Build-Tools 34.0.0（强制生成 build-tools 文件夹，提供 AIDL）
-          ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager --sdk_root=${{ env.ANDROID_HOME }} "build-tools;${{ env.ANDROID_BUILD_TOOLS_VERSION }}"
-          # 4. 验证 build-tools 文件夹是否生成
-          ls -la ~/.buildozer/android/platform/android-sdk/build-tools/
-          # 5. 验证 AIDL 是否存在
-          ls -la ~/.buildozer/android/platform/android-sdk/build-tools/${{ env.ANDROID_BUILD_TOOLS_VERSION }}/aidl || echo "AIDL 暂未生成，打包时会自动补全"
-
-      - name: 一键打包APK（兜底环境变量，确保顺利编译）
-        run: |
-          # 兜底：导出环境变量，确保所有工具正常工作
-          export ANDROID_ACCEPT_LICENSES=yes
-          export PATH=$PATH:~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin
-          export JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64
-          for i in 1 2 3; do
-            buildozer android debug -v --verbose && echo "打包成功，生成bin目录" && break
-            echo "第 $i 次打包失败，5秒后重试..."
-            sleep 5
-          done
-
-      - name: 验证bin目录是否存在（调试用）
-        run: ls -la ./bin || echo "bin目录未生成，打包失败"
-
-      - name: 上传APK成品
-        uses: actions/upload-artifact@v4
-        with:
-          name: Kivy-Official-APK
-          path: bin/*.apk
-          retention-days: 30
+    - name: Setup Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.x'
+    - name: Setup Java
+      uses: actions/setup-java@v5
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+    - uses: actions/checkout@v6
+    - name: Setup environment
+      run: |
+        pip install .
+    - run: buildozer --help
+    - run: buildozer init
+    - name: SDK, NDK, and p4a download
+      run: |
+        sed -i.bak "s/# android.accept_sdk_license = False/android.accept_sdk_license = True/" buildozer.spec
+        sed -i.bak "s/#p4a.branch = master/p4a.branch = develop/" buildozer.spec
+        buildozer android p4a -- --help
+    # Install OS specific dependencies
+    - name: Install Linux dependencies
+      if: runner.os == 'Linux'
+      # Required by some p4a recipes, but not
+      # installed by p4a on Linux.
+      run: |
+        sudo apt update
+        sudo apt -y install automake libltdl-dev
+    - name: Debug Build
+      run: |
+        touch main.py
+        buildozer android debug
+    - name: Release Build (aab)
+      run: |
+        touch main.py
+        export BUILDOZER_ALLOW_ORG_TEST_DOMAIN=1
+        buildozer android release
