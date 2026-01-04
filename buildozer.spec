@@ -5,7 +5,7 @@
 title = 明哥
 package.name = chengliming
 package.domain = org.test
-android.icon = ./chengliming.png
+icon.filename = ./chengliming.png
 
 # 源代码路径配置(必填项)
 source.dir = .
