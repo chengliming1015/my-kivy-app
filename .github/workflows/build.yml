@@ -116,9 +116,7 @@ jobs:
         buildozer --version
         echo "✅ Buildozer 及其依赖安装完成"
          
-    - name: 构建 Android APK（复用 GitHub Actions 大型依赖缓存，提升速度）
-      run: buildozer android clean
-
+   
         
     # 8. 构建 Android APK（保留日志输出，优化构建命令）
     - name: 构建 Android APK
