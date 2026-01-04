@@ -89,16 +89,14 @@ jobs:
         python-version: '3.9'
         cache: 'pip'  # 启用pip缓存，加速后续依赖安装
         
-    # 6. 缓存 Buildozer 与 Android 编译环境（修复：移除requirements.txt引用）
+    # 6. 缓存 Buildozer 与 Android 编译环境（优化：移除./bin，添加buildozer.spec哈希）
     - name: 缓存 Python 依赖与 Buildozer 编译环境
       uses: actions/cache@v3
       with:
         path: |
           ~/.cache/pip
           ~/.buildozer
-          ./bin
-        # 修复：移除${{ hashFiles('requirements.txt') }}，简化缓存key
-        key: ${{ runner.os }}-python3.9-buildozer1.5.0
+        key: ${{ runner.os }}-python3.9-buildozer1.5.0-${{ hashFiles('buildozer.spec') }}
         restore-keys: |
           ${{ runner.os }}-python3.9-buildozer1.5.0-
           
@@ -115,18 +113,29 @@ jobs:
         # 验证安装
         buildozer --version
         echo "✅ Buildozer 及其依赖安装完成"
-
-  
+         
+    # 8. 执行 Buildozer 项目缓存清理（修正名称+添加错误处理）
+    - name: 执行 Buildozer 项目缓存清理
+      run: |
+        set -euo pipefail
+        buildozer android clean
+        echo "✅ Buildozer 项目缓存清理完成"
         
-    # 8. 构建 Android APK（保留日志输出，优化构建命令）
+    # 9. 构建 Android APK（优化：添加产物存在性验证）
     - name: 构建 Android APK
       run: |
         set -euo pipefail
         # 执行Buildozer构建，将日志同时输出到终端和build.log文件
         buildozer android debug 2>&1 | tee build.log
+        # 验证APK产物是否存在
+        if ls ./bin/*.apk 1> /dev/null 2>&1; then
+          echo "✅ 检测到APK产物，构建大概率成功！"
+        else
+          echo "⚠️ 未检测到APK产物，构建可能失败，请查看build.log"
+        fi
         echo "✅ APK 构建流程执行完成（是否成功请查看产物与日志）"
         
-    # 9. 上传 APK 产物（关键：留存构建结果，方便下载使用）
+    # 10. 上传 APK 构建产物（修正编号，保持连贯）
     - name: 上传 APK 构建产物
       uses: actions/upload-artifact@v4
       if: always()  # 无论构建成功/失败，都上传产物（方便排查问题）
