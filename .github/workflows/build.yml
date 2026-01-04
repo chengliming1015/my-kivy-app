@@ -113,6 +113,14 @@ jobs:
         # 验证安装
         buildozer --version
         echo "✅ Buildozer 及其依赖安装完成"
+
+    # 8. 手动初始化 Buildozer Android 环境（解决目录缺失问题）
+    - name: 初始化 Buildozer Android 环境
+      run: |
+       set -euo pipefail
+       buildozer android init
+       echo "✅ Buildozer Android 环境初始化完成，核心目录已创建"
+   
          
     # 8. 执行 Buildozer 项目缓存清理（修正名称+添加错误处理）
     - name: 执行 Buildozer 项目缓存清理
