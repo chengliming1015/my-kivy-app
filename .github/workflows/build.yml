@@ -9,16 +9,32 @@ jobs:
   build-apk:
     runs-on: ubuntu-latest
     timeout-minutes: 120  # 增加超时时间，因为构建需要较长时间
-    
+    defaults:
+      run:
+        shell: bash
+        working-directory: .  # 明确工作目录为仓库根目录，提高可读性
+
     steps:
     # 1. 获取代码
     - name: 检出代码
-      uses: actions/checkout@v4  # 使用 v4 而不是 v6，更稳定
+      uses: actions/checkout@v4  
       
-    # 2. 安装完整的系统依赖（一次性安装所有必需包）
+    # 2. 检查必要构建配置文件（buildozer.spec）是否存在
+    - name: 验证 buildozer.spec 配置文件
+      run: |
+        set -euo pipefail  # 错误退出机制：命令失败/未定义变量/管道失败均终止流程
+        if [ ! -f "buildozer.spec" ]; then
+          echo "错误：仓库根目录未找到 buildozer.spec 配置文件，构建无法继续！"
+          exit 1
+        fi
+        echo "✅ 找到 buildozer.spec 配置文件，继续构建流程"
+        
+    # 3. 安装完整的系统依赖（修复语法错误，优化命令格式）
     - name: 安装完整系统依赖
       run: |
-        sudo apt-get update
+        set -euo pipefail
+        sudo apt-get update -y
+        # 一次性安装所有必需包，移除续行符后的内联注释（避免Shell语法错误）
         sudo apt-get install -y \
           build-essential \
           git \
@@ -27,19 +43,16 @@ jobs:
           zip \
           unzip \
           tar \
-          openjdk-17-jdk \      # 使用 JDK 17，兼容性更好
-          # 解决 autoconf 问题的关键包
+          openjdk-17-jdk \
           autoconf \
           automake \
           libtool \
           pkg-config \
           cmake \
           ninja-build \
-          # Python 开发环境
           python3-dev \
           python3-pip \
           python3-venv \
-          # 必需的系统库
           zlib1g-dev \
           libncurses5-dev \
           libncursesw5-dev \
@@ -48,148 +61,77 @@ jobs:
           libssl-dev \
           libsqlite3-dev \
           sqlite3 \
-          # 其他编译工具
           swig \
           yasm \
           nasm \
           bison \
           flex
+        # 清理apt缓存，减少磁盘占用
+        sudo apt-get clean
         
-    # 3. 设置 Python 环境
-    - name: 设置 Python
-      uses: actions/setup-python@v4  # 使用 v4 而不是 v6
+    # 4. 配置 Java 环境变量（关键：Android构建工具依赖 JAVA_HOME）
+    - name: 配置 JAVA_HOME 环境变量
+      run: |
+        set -euo pipefail
+        # 查找openjdk-17的安装路径
+        JAVA_PATH=$(update-alternatives --list java | grep openjdk-17 | sed 's/\/bin\/java//')
+        # 配置到全局环境，生效当前会话
+        echo "JAVA_HOME=$JAVA_PATH" >> $GITHUB_ENV
+        echo "export JAVA_HOME=$JAVA_PATH" >> ~/.bashrc
+        echo "export PATH=\$JAVA_HOME/bin:\$PATH" >> ~/.bashrc
+        source ~/.bashrc
+        # 验证Java环境
+        java -version
+        echo "✅ JAVA_HOME 配置完成：$JAVA_PATH"
+        
+    # 5. 设置 Python 环境
+    - name: 设置 Python 3.9
+      uses: actions/setup-python@v4
       with:
         python-version: '3.9'
+        cache: 'pip'  # 启用pip缓存，加速后续依赖安装
         
-    # 4. 安装 Buildozer 和相关工具
+    # 6. 缓存 Buildozer 与 Android 编译环境（核心优化：大幅缩短后续构建时间）
+    - name: 缓存 Python 依赖与 Buildozer 编译环境
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/pip
+          ~/.buildozer
+          ./bin
+        key: ${{ runner.os }}-python3.9-buildozer1.5.0-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-python3.9-buildozer1.5.0-
+          
+    # 7. 安装 Buildozer 和相关工具
     - name: 安装 Buildozer 和依赖
       run: |
+        set -euo pipefail
         # 升级 pip
         python -m pip install --upgrade pip
-        
-        # 安装特定版本的依赖（避免兼容性问题）
+        # 安装指定版本依赖
         pip install "cython==0.29.36"
         pip install "buildozer==1.5.0"
         pip install "python-for-android==2023.08.24"
-        
         # 验证安装
-        buildozer --version || echo "Buildozer 安装失败"
+        buildozer --version
+        echo "✅ Buildozer 及其依赖安装完成"
         
-    # 5. 准备构建环境
-    - name: 配置构建环境
-      run: |
-        # 清理旧缓存
-        rm -rf ~/.buildozer 2>/dev/null || true
-        
-        # 设置环境变量
-        echo "BUILDOZER_ACCEPT_SDK_LICENSE=1" >> $GITHUB_ENV
-        echo "BUILDOZER_ALLOW_ROOT=1" >> $GITHUB_ENV
-        
-        # 如果不存在 buildozer.spec，创建最小化版本
-        if [ ! -f "buildozer.spec" ]; then
-          echo "创建默认的 buildozer.spec 文件..."
-          cat > buildozer.spec << 'EOF'
-[app]
-title = My Kivy App
-package.name = myapp
-package.domain = org.test
-source.dir = .
-source.include_exts = py,png,jpg,kv,ttf,json
-version = 1.0
-requirements = python3,kivy
-orientation = portrait
-fullscreen = 0
-android.accept_sdk_license = True
-android.api = 33
-android.minapi = 28
-android.archs = arm64-v8a
-android.numeric_version = $(date +%s | cut -c 3-10)
-
-[buildozer]
-log_level = 2
-warn_on_root = 1
-EOF
-          echo "✅ 已创建 buildozer.spec 文件"
-        else
-          echo "✅ 已存在 buildozer.spec 文件"
-          
-          # 确保使用 archs 而不是 arch
-          sed -i 's/android\.arch = /android.archs = /g' buildozer.spec 2>/dev/null || true
-          
-          # 确保接受许可证
-          if ! grep -q "android.accept_sdk_license" buildozer.spec; then
-            sed -i '/^\[app\]/a android.accept_sdk_license = True' buildozer.spec
-            echo "✅ 已添加 android.accept_sdk_license"
-          fi
-        fi
-        
-    # 6. 构建 APK
+    # 8. 构建 Android APK（保留日志输出，优化构建命令）
     - name: 构建 Android APK
       run: |
-        echo "开始构建 APK，这可能需要 30-60 分钟..."
-        
-        # 运行构建，保存日志
+        set -euo pipefail
+        # 执行Buildozer构建，将日志同时输出到终端和build.log文件
         buildozer android debug 2>&1 | tee build.log
+        echo "✅ APK 构建流程执行完成（是否成功请查看产物与日志）"
         
-        # 检查构建结果
-        if [ $? -eq 0 ] && ls bin/*.apk 1> /dev/null 2>&1; then
-          echo "✅ APK 构建成功！"
-          echo "生成的 APK 文件："
-          ls -lh bin/*.apk
-        else
-          echo "❌ APK 构建失败"
-          echo "查看最后 50 行日志："
-          tail -50 build.log
-          echo "常见错误分析："
-          grep -i "error\|fail\|cannot\|no such" build.log | head -10 || true
-          exit 1
-        fi
-        
-    # 7. 重命名 APK 文件（便于区分）
-    - name: 重命名 APK 文件
-      if: success()
-      run: |
-        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-        if ls bin/*.apk 1> /dev/null 2>&1; then
-          for apk in bin/*.apk; do
-            BASENAME=$(basename "$apk" .apk)
-            NEW_NAME="${BASENAME}_${TIMESTAMP}.apk"
-            mv "$apk" "bin/$NEW_NAME"
-            echo "✅ APK 重命名为: $NEW_NAME"
-          done
-        fi
-        
-    # 8. 上传生成的 APK
-    - name: 上传 APK 文件
-      uses: actions/upload-artifact@v4  # 使用 v4 而不是 v6
-      with:
-        name: myapp-apk
-        path: bin/*.apk
-        if-no-files-found: error
-        
-    # 9. 上传构建日志（便于调试）
-    - name: 上传构建日志
-      if: always()
+    # 9. 上传 APK 产物（关键：留存构建结果，方便下载使用）
+    - name: 上传 APK 构建产物
       uses: actions/upload-artifact@v4
+      if: always()  # 无论构建成功/失败，都上传产物（方便排查问题）
       with:
-        name: build-logs
-        path: build.log
-        retention-days: 7
-        
-    # 10. 显示构建结果
-    - name: 显示构建结果
-      if: always()
-      run: |
-        if [ -f "build.log" ]; then
-          if grep -q "✅ APK 构建成功" build.log; then
-            echo "🎉 构建成功完成！"
-            echo ""
-            echo "📱 下载 APK："
-            echo "1. 点击右侧 'Summary' 标签"
-            echo "2. 在 'Artifacts' 部分找到 'myapp-apk'"
-            echo "3. 点击下载"
-          else
-            echo "❌ 构建失败"
-            echo "查看 'build-logs' 获取详细信息"
-          fi
-        fi
+        name: kivy-apk-build-result
+        path: |
+          ./bin/*.apk  # 上传所有生成的APK文件
+          ./build.log  # 上传构建日志，用于排查失败问题
+        retention-days: 7  # 产物保留7天，可根据需求调整
