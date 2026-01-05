@@ -14,8 +14,7 @@ android.presplash_color = #0A0A1A
 # 源代码配置
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,ttf,json,txt
-source.exclude_exts = pyc,pyo,~,swp
-source.exclude_dirs = venv,.git,.vscode,__pycache__,bin
+source.include_patterns = fonts/*
 
 # 依赖项
 requirements = python3,kivy==2.2.1,plyer==2.1.0
@@ -34,6 +33,8 @@ android.fullscreen = 0
 
 # 完整的权限配置（包含后台定位权限）
 android.permissions = ACCESS_FINE_LOCATION,ACCESS_COARSE_LOCATION,INTERNET,ACCESS_BACKGROUND_LOCATION
+android.features = android.hardware.location.gps
+
 
 # 打包配置
 android.ndk = 25b
