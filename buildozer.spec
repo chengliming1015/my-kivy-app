@@ -26,7 +26,7 @@ android.minapi = 28
 android.archs = arm64-v8a
 
 # 屏幕方向  选项：portrait（竖屏）, landscape（横屏）, portrait,sensor, landscape,sensor
-android.orientation = portrait
+orientation = portrait
 
 # 全屏模式 0=显示状态栏, 1=隐藏状态栏, 2=完全全屏
 android.fullscreen = 0
