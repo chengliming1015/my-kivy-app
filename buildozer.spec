@@ -33,7 +33,6 @@ android.fullscreen = 0
 
 # 完整的权限配置（包含后台定位权限）
 android.permissions = ACCESS_FINE_LOCATION,ACCESS_COARSE_LOCATION,INTERNET,ACCESS_BACKGROUND_LOCATION
-android.features = android.hardware.location.gps
 
 
 # 打包配置
