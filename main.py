@@ -103,7 +103,7 @@ class AutoGPSLabel(Label):
 class MinimalGPSApp(App):
     """极简GPS应用"""
     # 字体路径
-    FONT_PATH = 'fonts/msyhbd.ttc'
+    FONT_PATH = 'fonts/simhei.ttf'
     
     def build(self):
         # 设置全屏
