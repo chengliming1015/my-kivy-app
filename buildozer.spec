@@ -22,7 +22,7 @@ source.include_exts = py,png,jpg,kv,atlas,ttf,ttc,json,txt
 source.include_patterns = fonts/*
 
 # ================= 第三部分：依赖和SDK配置 =================
-requirements = python3, kivy==2.2.1, plyer==2.1.0,,android
+requirements = python3, kivy==2.2.1, plyer==2.1.0,android
 
 # Android SDK配置
 android.accept_sdk_license = True
