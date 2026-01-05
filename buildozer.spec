@@ -21,7 +21,7 @@ android.splashscreen.delay = 3000
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,ttf,json  # 扩展了常见文件类型
 # ✅ 新增2：强制包含圣诞树核心脚本（避免Buildozer打包时遗漏，确保效果正常）
-source.include_files = ./kivy_christmas_tree.py
+source.include_files = ./main.py
 
 # APP的版本号(必填项)【原有配置，无变动】
 version = 0.1
