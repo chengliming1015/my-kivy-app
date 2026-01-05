@@ -1,242 +1,370 @@
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
+from kivy.uix.button import Button
 from kivy.graphics import Color, Rectangle
-from kivy.clock import mainthread, Clock
+from kivy.clock import Clock, mainthread
 from kivy.utils import platform
-import threading
+import os
 
-# 平台特定的GPS导入
+# 只针对Android平台
 if platform == 'android':
-    from android.permissions import request_permissions, Permission, check_permission
+    from android.permissions import request_permissions, Permission
     from jnius import autoclass
-
-# 尝试导入plyer
-try:
-    from plyer import gps
-    PLYER_AVAILABLE = True
-except ImportError:
+    try:
+        from plyer import gps
+        PLYER_AVAILABLE = True
+    except ImportError:
+        PLYER_AVAILABLE = False
+else:
     PLYER_AVAILABLE = False
 
-
-class LocationLayout(BoxLayout):
-    def __init__(self, **kwargs):
-        super(LocationLayout, self).__init__(**kwargs)
-        self.orientation = 'vertical'
-        self.padding = 20
-        self.spacing = 20
-        
-        # 背景设置
-        with self.canvas.before:
-            Color(0.1, 0.1, 0.2, 1)
-            self.rect = Rectangle(pos=self.pos, size=self.size)
-        self.bind(pos=self.update_rect, size=self.update_rect)
-        
-        # 标题
-        self.title_label = Label(
-            text="📱 实时定位应用",
-            font_size=28,
-            bold=True,
-            color=(0.9, 0.9, 0.9, 1)
-        )
-        
-        # 状态信息
-        self.status_label = Label(
-            text="正在初始化...",
-            font_size=16,
-            color=(1, 0.8, 0.4, 1)
-        )
-        
-        # 定位信息
-        self.info_label = Label(
-            text="等待定位数据...",
-            font_size=18,
-            color=(0.6, 0.9, 1.0, 1),
-            halign='center',
-            valign='middle',
-            size_hint=(1, 0.6)
-        )
-        self.info_label.bind(size=self._update_text_size)
-        
-        # 提示信息
-        self.tips_label = Label(
-            text="请确保已开启GPS定位\n首次使用需要位置权限",
-            font_size=14,
-            color=(0.8, 0.8, 0.8, 0.8),
-            italic=True
-        )
-        
-        self.add_widget(self.title_label)
-        self.add_widget(self.status_label)
-        self.add_widget(self.info_label)
-        self.add_widget(self.tips_label)
-        
-        # 延迟初始化
-        Clock.schedule_once(self._init_app, 1)
+class SimpleGPSApp(App):
+    # 字体路径
+    FONT_PATH = 'fonts/msyhbd.ttc'
     
-    def _update_text_size(self, instance, size):
-        instance.text_size = size
-    
-    def update_rect(self, *args):
-        self.rect.pos = self.pos
-        self.rect.size = self.size
-    
-    def _init_app(self, dt):
-        """初始化应用"""
-        if platform == 'android':
-            self._check_android_permissions()
+    def build(self):
+        # 检查字体文件是否存在
+        if os.path.exists(self.FONT_PATH):
+            from kivy.core.text import LabelBase
+            # 注册字体
+            LabelBase.register(name='MicrosoftYaHeiBold', 
+                             fn_regular=self.FONT_PATH)
+            self.font_name = 'MicrosoftYaHeiBold'
         else:
-            self._init_gps()
+            print(f"字体文件不存在: {self.FONT_PATH}")
+            self.font_name = 'Roboto'  # 使用默认字体
+        
+        # 设置主题颜色
+        from kivy.core.window import Window
+        Window.clearcolor = (0.05, 0.1, 0.15, 1)  # 深色背景
+        
+        return GPSLayout(font_name=self.font_name)
     
-    def _check_android_permissions(self):
-        """检查并请求Android权限"""
+    def on_start(self):
+        # 应用启动时请求权限
+        if platform == 'android':
+            self.request_android_permissions()
+    
+    def request_android_permissions(self):
+        """请求Android权限"""
         try:
-            from android.permissions import request_permissions, Permission
-            
-            permissions = [
+            required_permissions = [
                 Permission.ACCESS_FINE_LOCATION,
                 Permission.ACCESS_COARSE_LOCATION,
-                Permission.INTERNET
             ]
             
-            def callback(permissions, grant_results):
-                if all(grant_results):
-                    self.update_status("权限已获取，启动GPS...")
-                    self._init_gps()
+            def permission_callback(permissions, results):
+                if all(results):
+                    print("权限已授予")
                 else:
-                    self.update_status("权限被拒绝，无法定位")
-                    self.update_info("请在设置中授予位置权限")
+                    print("部分权限被拒绝")
+                    
+            request_permissions(required_permissions, permission_callback)
             
-            request_permissions(permissions, callback)
-            
-        except ImportError:
-            # 非Android平台
-            self._init_gps()
         except Exception as e:
-            self.update_status(f"权限检查失败: {str(e)}")
-            self._init_gps()
-    
-    def _init_gps(self):
-        """初始化GPS"""
-        if not PLYER_AVAILABLE:
-            self.update_status("GPS模块不可用")
-            self._show_test_data()
-            return
+            print(f"权限请求失败: {e}")
+
+class GPSLayout(BoxLayout):
+    def __init__(self, font_name='Roboto', **kwargs):
+        super().__init__(**kwargs)
+        self.orientation = 'vertical'
+        self.padding = [20, 20, 20, 20]
+        self.spacing = 15
         
+        # 保存字体名称
+        self.font_name = font_name
+        
+        # GPS状态
+        self.gps_started = False
+        self.last_location = None
+        
+        # 创建UI
+        self.create_ui()
+        
+    def create_ui(self):
+        """创建简洁的UI界面"""
+        # 标题
+        title = Label(
+            text='Android GPS定位',
+            font_size=28,
+            font_name=self.font_name,
+            bold=True,
+            color=(0.2, 0.8, 1, 1),
+            size_hint=(1, 0.2)
+        )
+        
+        # 状态显示
+        self.status_label = Label(
+            text='准备中...',
+            font_size=18,
+            font_name=self.font_name,
+            color=(1, 1, 1, 0.8),
+            size_hint=(1, 0.1)
+        )
+        
+        # 纬度显示
+        lat_box = BoxLayout(orientation='horizontal', size_hint=(1, 0.15), spacing=10)
+        lat_title = Label(
+            text='纬度:',
+            font_size=20,
+            font_name=self.font_name,
+            color=(0.7, 0.7, 0.7, 1),
+            size_hint=(0.3, 1),
+            halign='right'
+        )
+        self.lat_label = Label(
+            text='0.000000°',
+            font_size=22,
+            font_name=self.font_name,
+            bold=True,
+            color=(0.2, 0.9, 0.5, 1),
+            size_hint=(0.7, 1),
+            halign='left'
+        )
+        lat_box.add_widget(lat_title)
+        lat_box.add_widget(self.lat_label)
+        
+        # 经度显示
+        lon_box = BoxLayout(orientation='horizontal', size_hint=(1, 0.15), spacing=10)
+        lon_title = Label(
+            text='经度:',
+            font_size=20,
+            font_name=self.font_name,
+            color=(0.7, 0.7, 0.7, 1),
+            size_hint=(0.3, 1),
+            halign='right'
+        )
+        self.lon_label = Label(
+            text='0.000000°',
+            font_size=22,
+            font_name=self.font_name,
+            bold=True,
+            color=(0.2, 0.9, 0.5, 1),
+            size_hint=(0.7, 1),
+            halign='left'
+        )
+        lon_box.add_widget(lon_title)
+        lon_box.add_widget(self.lon_label)
+        
+        # 精度显示
+        acc_box = BoxLayout(orientation='horizontal', size_hint=(1, 0.15), spacing=10)
+        acc_title = Label(
+            text='精度:',
+            font_size=20,
+            font_name=self.font_name,
+            color=(0.7, 0.7, 0.7, 1),
+            size_hint=(0.3, 1),
+            halign='right'
+        )
+        self.acc_label = Label(
+            text='0.0米',
+            font_size=22,
+            font_name=self.font_name,
+            bold=True,
+            color=(1, 0.8, 0.2, 1),
+            size_hint=(0.7, 1),
+            halign='left'
+        )
+        acc_box.add_widget(acc_title)
+        acc_box.add_widget(self.acc_label)
+        
+        # 卫星数显示
+        sat_box = BoxLayout(orientation='horizontal', size_hint=(1, 0.15), spacing=10)
+        sat_title = Label(
+            text='卫星:',
+            font_size=20,
+            font_name=self.font_name,
+            color=(0.7, 0.7, 0.7, 1),
+            size_hint=(0.3, 1),
+            halign='right'
+        )
+        self.sat_label = Label(
+            text='0',
+            font_size=22,
+            font_name=self.font_name,
+            bold=True,
+            color=(0.8, 0.6, 1, 1),
+            size_hint=(0.7, 1),
+            halign='left'
+        )
+        sat_box.add_widget(sat_title)
+        sat_box.add_widget(self.sat_label)
+        
+        # 控制按钮
+        btn_box = BoxLayout(size_hint=(1, 0.2), spacing=20)
+        
+        self.start_btn = Button(
+            text='开始定位',
+            font_size=24,
+            font_name=self.font_name,
+            background_color=(0.2, 0.6, 0.9, 1),
+            size_hint=(0.5, 1)
+        )
+        self.start_btn.bind(on_press=self.toggle_gps)
+        
+        self.refresh_btn = Button(
+            text='刷新',
+            font_size=24,
+            font_name=self.font_name,
+            background_color=(0.3, 0.5, 0.7, 1),
+            size_hint=(0.5, 1)
+        )
+        self.refresh_btn.bind(on_press=self.refresh_status)
+        
+        btn_box.add_widget(self.start_btn)
+        btn_box.add_widget(self.refresh_btn)
+        
+        # 组装所有组件
+        self.add_widget(title)
+        self.add_widget(self.status_label)
+        self.add_widget(lat_box)
+        self.add_widget(lon_box)
+        self.add_widget(acc_box)
+        self.add_widget(sat_box)
+        self.add_widget(btn_box)
+        
+        # 添加空白区域
+        spacer = Label(text='', size_hint=(1, 0.05))
+        self.add_widget(spacer)
+        
+        # 延迟启动GPS（等待权限请求完成）
+        Clock.schedule_once(self.delayed_init, 2)
+    
+    def delayed_init(self, dt):
+        """延迟初始化"""
+        if platform == 'android' and PLYER_AVAILABLE:
+            self.init_gps()
+        else:
+            self.update_status("不支持GPS或plyer不可用", is_error=True)
+    
+    def init_gps(self):
+        """初始化GPS"""
         try:
-            from plyer import gps
-            
             # 配置GPS回调
             gps.configure(
-                on_location=self.on_location,
-                on_status=self.on_status
+                on_location=self.on_gps_location,
+                on_status=self.on_gps_status
             )
+            self.update_status("GPS已初始化")
             
-            # 启动GPS
-            gps.start(minTime=1000, minDistance=1)
-            self.update_status("GPS服务已启动")
-            
-        except NotImplementedError:
-            self.update_status("当前平台不支持GPS")
-            self._show_test_data()
         except Exception as e:
-            self.update_status(f"GPS启动失败: {str(e)}")
-            self._show_test_data()
+            self.update_status(f"GPS初始化失败: {str(e)}", is_error=True)
     
-    def _show_test_data(self):
-        """显示测试数据"""
-        test_data = {
-            'lat': 31.2304,
-            'lon': 121.4737,
-            'alt': 5.0,
-            'speed': 0.0
-        }
-        self.on_location(**test_data)
+    def toggle_gps(self, instance):
+        """切换GPS状态"""
+        if not PLYER_AVAILABLE:
+            self.update_status("GPS模块不可用", is_error=True)
+            return
+            
+        if self.gps_started:
+            self.stop_gps()
+            instance.text = "开始定位"
+            instance.background_color = (0.2, 0.6, 0.9, 1)
+        else:
+            self.start_gps()
+            instance.text = "停止定位"
+            instance.background_color = (0.9, 0.3, 0.3, 1)
+    
+    def start_gps(self):
+        """启动GPS"""
+        try:
+            gps.start(
+                minTime=1000,       # 1秒更新一次
+                minDistance=1,      # 移动1米更新
+                preferredAccuracy=10 # 首选10米精度
+            )
+            self.gps_started = True
+            self.update_status("GPS已启动，搜索卫星中...")
+            
+        except Exception as e:
+            self.update_status(f"GPS启动失败: {str(e)}", is_error=True)
+    
+    def stop_gps(self):
+        """停止GPS"""
+        try:
+            if self.gps_started:
+                gps.stop()
+                self.gps_started = False
+                self.update_status("GPS已停止")
+                
+        except Exception as e:
+            self.update_status(f"GPS停止失败: {str(e)}", is_error=True)
     
     @mainthread
-    def on_location(self, **kwargs):
-        """位置更新回调"""
+    def on_gps_location(self, **kwargs):
+        """GPS位置更新回调"""
         try:
+            # 获取数据
             lat = kwargs.get('lat', 0)
             lon = kwargs.get('lon', 0)
-            alt = kwargs.get('alt', kwargs.get('altitude', 0))
-            speed = kwargs.get('speed', 0)
+            accuracy = kwargs.get('accuracy', kwargs.get('gps_accuracy', 0))
+            satellites = kwargs.get('satellites', kwargs.get('num_satellites', 0))
             
-            # 格式化为字符串
-            if isinstance(lat, (int, float)):
-                lat_str = f"{lat:.6f}°"
+            # 更新UI
+            if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+                self.lat_label.text = f"{lat:.6f}°"
+                self.lon_label.text = f"{lon:.6f}°"
             else:
-                lat_str = str(lat)
+                self.lat_label.text = str(lat)
+                self.lon_label.text = str(lon)
             
-            if isinstance(lon, (int, float)):
-                lon_str = f"{lon:.6f}°"
+            self.acc_label.text = f"{accuracy:.1f}米"
+            self.sat_label.text = str(satellites)
+            
+            # 更新状态
+            if satellites > 0:
+                self.update_status(f"定位成功 ({satellites}颗卫星)")
             else:
-                lon_str = str(lon)
+                self.update_status("定位中...")
             
-            info_text = (
-                f"📍 位置信息\n\n"
-                f"纬度: {lat_str}\n"
-                f"经度: {lon_str}\n"
-                f"海拔: {alt:.1f}米\n"
-                f"速度: {speed:.1f}m/s\n\n"
-                f"更新时间: {Clock.get_strftime()}"
-            )
-            
-            self.update_status("定位成功 ✓")
-            self.update_info(info_text)
+            # 保存最后位置
+            self.last_location = (lat, lon)
             
         except Exception as e:
-            self.update_status(f"数据错误: {str(e)}")
+            print(f"位置数据处理错误: {e}")
     
     @mainthread
-    def on_status(self, stype, status):
+    def on_gps_status(self, stype, status):
         """GPS状态回调"""
-        status_map = {
+        status_messages = {
             'provider-enabled': '定位服务已启用',
             'provider-disabled': '定位服务已禁用',
+            'gps-status': f'GPS状态: {status}',
             'started': 'GPS已启动',
             'stopped': 'GPS已停止'
         }
         
-        message = status_map.get(stype, f"状态: {stype}")
-        self.update_status(f"{message} - {status}")
+        message = status_messages.get(stype, f"状态更新: {stype}")
+        self.update_status(f"{message}")
     
     @mainthread
-    def update_status(self, text):
-        self.status_label.text = f"状态: {text}"
+    def update_status(self, text, is_error=False):
+        """更新状态显示"""
+        if is_error:
+            self.status_label.color = (1, 0.3, 0.3, 1)  # 红色错误
+        else:
+            self.status_label.color = (0.2, 0.8, 0.3, 1)  # 绿色正常
+        
+        self.status_label.text = text
     
-    @mainthread
-    def update_info(self, text):
-        self.info_label.text = text
-    
-    def stop(self):
-        """停止GPS"""
-        if PLYER_AVAILABLE:
-            try:
-                from plyer import gps
-                gps.stop()
-            except:
-                pass
-
-
-class LocationApp(App):
-    def build(self):
-        self.title = "实时定位 v1.0"
-        self.icon = 'icon.png' if platform == 'android' else None
-        self.layout = LocationLayout()
-        return self.layout
+    def refresh_status(self, instance):
+        """刷新状态"""
+        if self.last_location:
+            lat, lon = self.last_location
+            self.update_status(f"最后位置: {lat:.6f}, {lon:.6f}")
+        else:
+            self.update_status("等待定位数据...")
     
     def on_stop(self):
-        if hasattr(self, 'layout'):
-            self.layout.stop()
-    
-    def on_pause(self):
-        return True
-    
-    def on_resume(self):
-        if hasattr(self, 'layout'):
-            Clock.schedule_once(lambda dt: self.layout._init_gps(), 0.5)
-
+        """停止应用时停止GPS"""
+        self.stop_gps()
 
 if __name__ == '__main__':
-    LocationApp().run()
+    # 检查是否在Android平台
+    if platform != 'android':
+        print("警告: 此应用专为Android平台设计")
+        print("在非Android平台上，GPS功能可能无法正常工作")
+    
+    # 运行应用
+    SimpleGPSApp().run()
