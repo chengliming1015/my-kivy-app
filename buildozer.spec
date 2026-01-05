@@ -40,7 +40,7 @@ android.build_cache = True
 # ================= 第四部分：权限配置 =================
 # 简化权限：去掉ACCESS_BACKGROUND_LOCATION，除非你真的需要后台定位
 android.permissions = ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION, INTERNET
-android.features = android.hardware.location.gps
+
 
 # ================= 第五部分：输出和日志 =================
 android.output_dir = ./bin
