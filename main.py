@@ -1,163 +1,158 @@
 from kivy.app import App
 from kivy.uix.widget import Widget
-from kivy.graphics import Color, Ellipse, Rectangle, Line, Rotate, Translate
+from kivy.graphics import Color, Ellipse, Rectangle, Triangle
 from kivy.clock import Clock
-from kivy.core.window import Window
-from kivy.core.audio import SoundLoader
-from kivy.metrics import dp
-from kivy.utils import get_color_from_hex
 import random
-from math import hypot
 
-# ✅ 手机竖屏适配（核心）
-Window.size = (360, 640)
-Window.clearcolor = get_color_from_hex('#000020')  # 深蓝夜景底
-Window.fullscreen = False  # 打包后可改True全屏
-
-# 圣诞配色常量
-COLOR_GREEN = get_color_from_hex('#008822')
-COLOR_LIGHT_GREEN = get_color_from_hex('#00cc33')
-COLOR_RED = get_color_from_hex('#ff2222')
-COLOR_GOLD = get_color_from_hex('#ffdd00')
-COLOR_WHITE = get_color_from_hex('#ffffff')
-COLOR_BROWN = get_color_from_hex('#885522')
-
-class ChristmasTreeWidget(Widget):
+class ChristmasTree(Widget):
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # 核心变量
-        self.particles = []  # 装饰粒子
-        self.snows = []      # 雪花粒子
-        self.scale_val = 1.0 # 缩放比例
-        self.last_touches = [] # 双指触控记录
-        self.tree_center = (self.center_x, self.y + dp(180)) # 圣诞树中心
-        self.music = None    # 圣诞音乐
-        self.flash_flag = False # 点击闪烁标记
+        super(ChristmasTree, self).__init__(**kwargs)
+        self.decorations = []  # 存储所有装饰灯，用于后续闪烁更新
+        
+        # 初始化绘制（监听屏幕尺寸变化，确保适配）
+        self.bind(size=self._redraw_tree)  # 屏幕尺寸变化时重新绘制
+        self._redraw_tree()  # 首次初始化绘制
 
-        # 初始化资源
-        self.init_tree()     # 绘制圣诞树主体
-        self.init_music()    # 加载圣诞音乐
-        Clock.schedule_interval(self.update, 1/60) # 60帧动画刷新
-        Clock.schedule_interval(self.add_snow, 1/10)# 雪花生成频率
+        # 启动定时器，实现装饰灯动态闪烁（安卓端适配帧率，0.5秒更新一次）
+        Clock.schedule_interval(self._update_decorations, 0.5)
 
-    # ✅ 初始化圣诞树主体（三层枝叶+树干+星星顶）
-    def init_tree(self):
-        cx, cy = self.tree_center
-        with self.canvas.before:
-            # 树干
-            Color(*COLOR_BROWN)
-            Rectangle(pos=(cx-dp(15), cy-dp(120)), size=(dp(30), dp(80)))
-            # 三层圣诞树枝叶（渐变绿）
-            Color(*COLOR_GREEN)
-            Ellipse(pos=(cx-dp(70), cy-dp(20)), size=(dp(140), dp(100)))
-            Color(*COLOR_LIGHT_GREEN)
-            Ellipse(pos=(cx-dp(50), cy+dp(50)), size=(dp(100), dp(80)))
-            Color(*COLOR_GREEN)
-            Ellipse(pos=(cx-dp(30), cy+dp(100)), size=(dp(60), dp(60)))
-            # 顶部星星（金色）
-            Color(*COLOR_GOLD)
-            Line(points=[cx, cy+dp(140), cx-dp(10), cy+dp(120), cx+dp(10), cy+dp(120), cx, cy+dp(140)], width=dp(2))
+    def _redraw_tree(self, *args):
+        """重新绘制圣诞树（适配安卓屏幕尺寸变化，相对坐标计算）"""
+        # 清空原有绘制，避免重复叠加
+        self.canvas.clear()
+        self.decorations.clear()
 
-    # ✅ 加载圣诞音乐（打包时需把music.mp3放同目录）
-    def init_music(self):
-        try:
-            self.music = SoundLoader.load('music.mp3')
-            if self.music:
-                self.music.loop = True  # 循环播放
-        except:
-            pass # 无音乐文件不报错
+        # 安卓端：相对屏幕尺寸计算圣诞树位置（始终居中，适配不同手机屏幕）
+        self.tree_center_x = self.size[0] / 2  # 基于控件宽度居中（跟随手机屏幕宽度）
+        self.tree_bottom_y = self.size[1] * 0.1  # 底部留10%屏幕高度，避免贴近手机底部
 
-    # ✅ 生成雪花粒子
-    def add_snow(self, dt):
-        x = random.randint(0, int(self.width))
-        y = self.height + dp(10)
-        size = random.randint(1, 4)
-        speed = random.uniform(1, 3)
-        self.snows.append({'x':x, 'y':y, 'size':size, 'speed':speed})
+        # 1. 绘制圣诞树背景（替代原Window.clearcolor，适配安卓）
+        with self.canvas:
+            Color(0.05, 0.05, 0.1, 1)  # 深夜空蓝背景
+            Rectangle(pos=self.pos, size=self.size)
 
-    # ✅ 生成圣诞装饰粒子（红/金/白）
-    def add_particle(self):
-        cx, cy = self.tree_center
-        x = random.randint(int(cx-dp(60)), int(cx+dp(60)))
-        y = random.randint(int(cy-dp(20)), int(cy+dp(120)))
-        size = random.randint(3, 6)
-        color = random.choice([COLOR_RED, COLOR_GOLD, COLOR_WHITE])
-        self.particles.append({'x':x, 'y':y, 'size':size, 'color':color, 'flash':False})
+        # 2. 绘制树干和树体
+        self._draw_tree_trunk()
+        self._draw_tree_body()
+        self._draw_decorations()
 
-    # ✅ 点击屏幕：闪烁特效+播放音乐
-    def on_touch_down(self, touch):
-        if self.collide_point(*touch.pos):
-            # 播放音乐
-            if self.music and not self.music.state == 'play':
-                self.music.play()
-            # 点击闪烁
-            self.flash_flag = True
-            # 生成装饰粒子
-            for _ in range(5):
-                self.add_particle()
-        return super().on_touch_down(touch)
+    def _draw_tree_trunk(self):
+        """绘制圣诞树树干（适配安卓相对尺寸，不硬编码）"""
+        # 相对屏幕高度计算树干尺寸，适配不同手机
+        trunk_width = self.size[1] * 0.05  # 树干宽度=屏幕高度5%
+        trunk_height = self.size[1] * 0.1  # 树干高度=屏幕高度10%
+        with self.canvas:
+            # 树干棕色
+            Color(0.6, 0.3, 0.1, 1)
+            Rectangle(
+                pos=(self.tree_center_x - trunk_width/2, self.tree_bottom_y),
+                size=(trunk_width, trunk_height)
+            )
 
-    # ✅ 双指捏合缩放圣诞树（核心手势）
-    def on_touch_move(self, touch):
-        if len(self.touches) == 2:
-            t1, t2 = self.touches[:2]
-            # 计算双指距离
-            dist_now = hypot(t1.x-t2.x, t1.y-t2.y)
-            if self.last_touches:
-                dist_prev = hypot(self.last_touches[0].x-self.last_touches[1].x,
-                                  self.last_touches[0].y-self.last_touches[1].y)
-                # 更新缩放比例
-                self.scale_val += (dist_now - dist_prev) * 0.001
-                self.scale_val = max(0.5, min(self.scale_val, 2.0)) # 缩放限制0.5-2倍
-            self.last_touches = [t1, t2]
-        return super().on_touch_move(touch)
+    def _draw_tree_body(self):
+        """绘制分层圣诞树主体（适配安卓相对尺寸，3层递进）"""
+        # 相对屏幕高度计算树体尺寸，适配不同手机
+        base_layer_width = self.size[1] * 0.25  # 最下层宽度=屏幕高度25%
+        base_layer_height = self.size[1] * 0.18  # 最下层高度=屏幕高度18%
+        
+        tree_layers = [
+            (base_layer_width, base_layer_height),  # 第一层（最下层）
+            (base_layer_width * 0.7, base_layer_height * 0.9),  # 第二层（70%宽度，90%高度）
+            (base_layer_width * 0.4, base_layer_height * 0.8)   # 第三层（最上层，40%宽度，80%高度）
+        ]
+        current_y = self.tree_bottom_y + self.size[1] * 0.1  # 从树干顶部开始绘制第一层
 
-    # ✅ 动画主更新（粒子+雪花+缩放+闪烁）
-    def update(self, dt):
+        with self.canvas:
+            for layer_width, layer_height in tree_layers:
+                # 圣诞树深绿到浅绿渐变，提升层次感
+                green_shade = 0.2 + (current_y / self.size[1]) * 0.5
+                Color(green_shade, 0.7, 0.2, 1)
+
+                # 计算三角形三个顶点坐标（居中绘制，跟随屏幕尺寸变化）
+                p1 = (self.tree_center_x - layer_width/2, current_y)
+                p2 = (self.tree_center_x + layer_width/2, current_y)
+                p3 = (self.tree_center_x, current_y + layer_height)
+
+                # 绘制三角形分层，构成圣诞树主体
+                Triangle(points=[p1[0], p1[1], p2[0], p2[1], p3[0], p3[1]])
+
+                # 更新下一层起始y坐标（叠加当前层高度）
+                current_y += layer_height - self.size[1] * 0.02  # 轻微重叠，增强整体感
+
+    def _draw_decorations(self):
+        """绘制圣诞树装饰灯（彩色圆形，适配安卓屏幕，随机分布）"""
+        decoration_count = 50  # 装饰灯数量（可根据屏幕尺寸调整，此处固定）
+        min_y = self.tree_bottom_y + self.size[1] * 0.12
+        max_y = self.tree_bottom_y + self.size[1] * 0.45
+        max_radius = self.size[1] * 0.01  # 装饰灯最大半径=屏幕高度1%，适配不同手机
+
+        with self.canvas:
+            for _ in range(decoration_count):
+                # 随机生成装饰灯位置（限制在圣诞树主体范围内，跟随屏幕变化）
+                x_offset = random.uniform(-self.size[1]*0.22, self.size[1]*0.22)
+                y = random.uniform(min_y, max_y)
+                # 越往上，x偏移越小，贴合圣诞树形状
+                x = self.tree_center_x + x_offset * (1 - (y - min_y)/(max_y - min_y))
+                radius = random.uniform(self.size[1]*0.006, max_radius)
+
+                # 随机生成鲜艳的装饰灯颜色（红、黄、蓝、粉、紫）
+                color_choices = [
+                    (1, 0, 0, 1),    # 红
+                    (1, 1, 0, 1),    # 黄
+                    (0, 0, 1, 1),    # 蓝
+                    (1, 0.5, 0.8, 1),# 粉
+                    (0.7, 0, 1, 1)   # 紫
+                ]
+                color = random.choice(color_choices)
+
+                # 绘制装饰灯并存储相关信息（用于后续闪烁更新）
+                ellipse = Ellipse(
+                    pos=(x - radius/2, y - radius/2),
+                    size=(radius, radius)
+                )
+                self.decorations.append({
+                    'ellipse': ellipse,
+                    'color': color,
+                    'radius': radius,
+                    'pos': (x, y),
+                    'active': random.choice([True, False])  # 初始随机亮灭状态
+                })
+
+    def _update_decorations(self, dt):
+        """更新装饰灯状态，实现动态闪烁效果（安卓端流畅运行）"""
+        # 清空原有装饰灯颜色（重新绘制以更新状态）
         self.canvas.after.clear()
-        cx, cy = self.tree_center
 
-        # 应用缩放变换
         with self.canvas.after:
-            Translate(cx, cy)
-            Rotate(0)
-            Translate(-cx, -cy)
-            Scale(self.scale_val, self.scale_val, 1, origin=(cx, cy))
+            for deco in self.decorations:
+                # 随机切换亮灭状态，实现闪烁效果
+                if random.random() < 0.2:
+                    deco['active'] = not deco['active']
 
-            # 绘制装饰粒子
-            for p in self.particles:
-                Color(*p['color'], 1 if not p['flash'] else 0.3)
-                Ellipse(pos=(p['x']-p['size']/2, p['y']-p['size']/2), size=(p['size'], p['size']))
-                p['flash'] = not p['flash'] # 闪烁效果
-                if random.random() < 0.01:
-                    p['size'] += 0.1 # 随机缩放
+                # 亮灯：显示原颜色；灭灯：显示背景暗色调，模拟熄灭
+                if deco['active']:
+                    Color(*deco['color'])
+                else:
+                    Color(0.05, 0.05, 0.1, 1)  # 与背景色一致，隐藏装饰灯
 
-            # 绘制雪花粒子
-            for s in self.snows:
-                Color(*COLOR_WHITE, 0.8)
-                Ellipse(pos=(s['x']-s['size']/2, s['y']-s['size']/2), size=(s['size'], s['size']))
-                s['y'] -= s['speed'] # 雪花下落
-                s['x'] += random.uniform(-0.5, 0.5) # 雪花左右飘
+                # 重新绘制装饰灯（更新亮灭状态，适配屏幕尺寸）
+                Ellipse(
+                    pos=(deco['pos'][0] - deco['radius']/2, deco['pos'][1] - deco['radius']/2),
+                    size=(deco['radius'], deco['radius'])
+                )
 
-            # 点击全局闪烁
-            if self.flash_flag:
-                Color(*COLOR_WHITE, 0.5)
-                Ellipse(pos=(cx-dp(100), cy-dp(100)), size=(dp(200), dp(200)))
-                self.flash_flag = False
-
-        # 清理出界粒子
-        self.particles = [p for p in self.particles if 0 < p['x'] < self.width and 0 < p['y'] < self.height]
-        self.snows = [s for s in self.snows if s['y'] > -dp(10)]
-
-        # 持续生成装饰粒子
-        if random.random() < 0.05:
-            self.add_particle()
-
-# ✅ 主APP类
 class ChristmasTreeApp(App):
-    title = "Gemini3圣诞树-Kivy版"
     def build(self):
-        return ChristmasTreeWidget()
+        self.title = "文斌工作室 - 圣诞树"  # 安卓端APP窗口标题（部分手机显示在状态栏）
+        return ChristmasTree()
+
+    def on_pause(self):
+        """安卓端专属：处理应用暂停（如按Home键），返回True支持恢复"""
+        return True
+
+    def on_resume(self):
+        """安卓端专属：处理应用恢复，重新启动定时器（可选，确保闪烁效果不中断）"""
+        pass
 
 if __name__ == '__main__':
     ChristmasTreeApp().run()
